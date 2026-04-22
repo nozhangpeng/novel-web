@@ -53,23 +53,23 @@ export default function Bookshelf() {
   };
 
   const renderEmpty = () => (
-    <div className="bg-white rounded-2xl shadow-sm p-12 text-center border border-slate-100 min-h-[60vh] flex flex-col items-center justify-center">
-      <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mb-6">
-        <BookMarked className="w-12 h-12 text-slate-300" />
+    <div className="bg-white rounded-2xl shadow-sm p-6 sm:p-12 text-center border border-slate-100 min-h-[50vh] sm:min-h-[60vh] flex flex-col items-center justify-center">
+      <div className="w-16 h-16 sm:w-24 sm:h-24 bg-slate-50 rounded-full flex items-center justify-center mb-4 sm:mb-6">
+        <BookMarked className="w-8 h-8 sm:w-12 sm:h-12 text-slate-300" />
       </div>
-      <h2 className="text-2xl font-bold text-slate-800 mb-3">书架空空如也</h2>
-      <p className="text-slate-500 mb-8 max-w-md">去发现更多精彩好书，把它们加入书架吧！或者导入本地小说。</p>
-      <div className="flex gap-4">
+      <h2 className="text-xl sm:text-2xl font-bold text-slate-800 mb-2 sm:mb-3">书架空空如也</h2>
+      <p className="text-sm sm:text-base text-slate-500 mb-6 sm:mb-8 max-w-md px-4">去发现更多精彩好书，把它们加入书架吧！或者导入本地小说。</p>
+      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 w-full sm:w-auto px-4 sm:px-0">
         <Link 
           to="/"
-          className="px-8 py-3 bg-red-600 hover:bg-red-700 text-white rounded-full font-medium transition-colors shadow-md shadow-red-200"
+          className="w-full sm:w-auto px-6 sm:px-8 py-3 bg-red-600 hover:bg-red-700 text-white rounded-full font-medium transition-colors shadow-md shadow-red-200"
         >
           去书城逛逛
         </Link>
         <button 
           onClick={() => fileInputRef.current?.click()}
           disabled={isImporting}
-          className="px-8 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full font-medium transition-colors border border-slate-200 flex items-center gap-2"
+          className="w-full sm:w-auto px-6 sm:px-8 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full font-medium transition-colors border border-slate-200 flex items-center justify-center gap-2"
         >
           <Upload className="w-4 h-4" /> {isImporting ? '导入中...' : '导入本地小说'}
         </button>
