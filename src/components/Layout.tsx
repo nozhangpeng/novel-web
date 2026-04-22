@@ -52,7 +52,12 @@ export default function Layout() {
               </button>
             </form>
             
-            <div className="flex items-center gap-4 ml-4">
+            <div className="flex items-center gap-4 ml-2 sm:ml-4">
+              {/* 移动端搜索按钮 */}
+              <Link to="/search" className="md:hidden p-2 text-slate-600 hover:text-red-600 transition-colors">
+                <Search className="w-5 h-5" />
+              </Link>
+              
               <Link to="/bookshelf" className="flex items-center gap-2 text-slate-600 hover:text-red-600 font-medium transition-colors">
                 <Bookmark className="w-5 h-5" />
                 <span className="hidden sm:inline">我的书架</span>

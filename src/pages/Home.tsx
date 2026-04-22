@@ -156,9 +156,9 @@ export default function Home() {
       ) : (
         <>
           {/* 精选榜单模块 */}
-          <section className="bg-slate-50 rounded-2xl p-4 sm:p-6 border border-slate-100">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">
-              <div className="flex items-center gap-2">
+          <section className="bg-transparent sm:bg-slate-50 sm:rounded-2xl sm:p-6 sm:border sm:border-slate-100 -mx-4 sm:mx-0">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 sm:mb-6 px-4 sm:px-0">
+              <div className="hidden sm:flex items-center gap-2">
                 <Star className="w-6 h-6 text-amber-500 fill-amber-500" />
                 <h2 className="text-xl sm:text-2xl font-bold text-slate-800">
                   {activePrimaryTab === '男生' ? '男生强推' : activePrimaryTab === '女生' ? '女生必读' : '主编力荐'}
@@ -166,15 +166,15 @@ export default function Home() {
               </div>
               
               {/* 二级导航 */}
-              <div className="flex flex-wrap justify-end gap-2 mt-4 sm:mt-0">
+              <div className="flex justify-center sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto">
                 {FEATURED_TABS.map(tab => (
                   <button
                     key={tab}
                     onClick={() => setActiveFeaturedTab(tab)}
                     className={clsx(
-                      'px-4 py-1.5 text-xs sm:text-sm font-medium rounded-full transition-all border',
+                      'px-4 sm:px-5 py-1.5 sm:py-2 text-sm sm:text-sm font-medium rounded-full transition-all border flex-1 sm:flex-none text-center',
                       activeFeaturedTab === tab 
-                        ? 'bg-red-50 border-red-200 text-red-600' 
+                        ? 'bg-red-50 border-red-200 text-red-600 shadow-sm' 
                         : 'bg-white border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-50'
                     )}
                   >
@@ -185,7 +185,7 @@ export default function Home() {
             </div>
             
             <div 
-              className="relative h-[340px] md:h-[380px] w-full flex items-center justify-center overflow-visible sm:overflow-hidden mt-4"
+              className="relative h-[340px] md:h-[380px] w-full flex items-center justify-center overflow-visible sm:overflow-hidden mt-2 sm:mt-4"
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
@@ -206,10 +206,10 @@ export default function Home() {
                   <div
                     key={`${activeFeaturedTab}-${book.id}-${idx}`}
                     className={clsx(
-                      "absolute w-[85%] sm:w-[50%] md:w-[32%] h-full transition-all duration-500 ease-out",
+                      "absolute w-[92%] sm:w-[50%] md:w-[32%] h-full transition-all duration-500 ease-out",
                       isCenter ? "z-20 opacity-100 scale-100 translate-x-0" : "",
-                      isLeft ? "z-10 opacity-0 md:opacity-60 scale-90 -translate-x-[20%] md:-translate-x-[105%] cursor-pointer md:pointer-events-auto pointer-events-none" : "",
-                      isRight ? "z-10 opacity-0 md:opacity-60 scale-90 translate-x-[20%] md:translate-x-[105%] cursor-pointer md:pointer-events-auto pointer-events-none" : "",
+                      isLeft ? "z-10 opacity-0 md:opacity-60 scale-90 -translate-x-[15%] md:-translate-x-[105%] cursor-pointer md:pointer-events-auto pointer-events-none" : "",
+                      isRight ? "z-10 opacity-0 md:opacity-60 scale-90 translate-x-[15%] md:translate-x-[105%] cursor-pointer md:pointer-events-auto pointer-events-none" : "",
                       isHidden ? "z-0 opacity-0 scale-75 translate-x-0 pointer-events-none" : ""
                     )}
                     onClick={() => {
