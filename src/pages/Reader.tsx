@@ -5,7 +5,7 @@ import { getBookById, getChaptersByBookId, Book, Chapter } from '../mock/data';
 import { getLocalChapters } from '../utils/localBook';
 import { 
   Settings, List, ChevronLeft, ChevronRight, 
-  ArrowLeft, Moon, Sun, Loader2
+  ArrowLeft, Moon, Sun, Loader2, ArrowUpDown
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -17,6 +17,7 @@ export default function Reader() {
   const [showControls, setShowControls] = useState(false);
   const [showToc, setShowToc] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [tocAscending, setTocAscending] = useState(true);
 
   const [book, setBook] = useState<Book | null>(null);
   const [chapter, setChapter] = useState<Chapter | null>(null);
@@ -136,6 +137,16 @@ export default function Reader() {
     day: 'bg-[#f8f9fa] text-slate-900',
     night: 'bg-slate-900 text-slate-300',
     sepia: 'bg-[#f4ebd9] text-[#5c4b37]',
+    green: 'bg-[#cce8cf] text-[#2c5234]',
+  };
+
+  // 根据翻页模式设置不同的容器样式
+  const getContainerStyle = () => {
+    if (readerSettings.turnMode === 'scroll') {
+      return "max-w-3xl mx-auto px-6 py-12 pb-32 min-h-screen flex flex-col cursor-pointer";
+    }
+    // 非上下翻页模式（如平移、覆盖、仿真等）时，将页面限制为全屏高度并隐藏超出内容，模拟阅读器单页效果
+    return "max-w-3xl mx-auto px-6 py-12 h-screen overflow-hidden flex flex-col cursor-pointer";
   };
 
   return (
@@ -148,36 +159,55 @@ export default function Reader() {
     >
       {/* Content */}
       <div 
-        className="max-w-3xl mx-auto px-6 py-12 pb-32 min-h-screen flex flex-col cursor-pointer"
+        className={getContainerStyle()}
         style={{ 
           fontSize: `${readerSettings.fontSize}px`,
           lineHeight: readerSettings.lineHeight,
           fontFamily: readerSettings.fontFamily === 'serif' ? 'serif' : 'sans-serif'
         }}
       >
-        <h1 className="text-2xl font-bold mb-12 text-center">{chapter.title}</h1>
-        <div className="flex-1 min-h-[50vh]">
-          {chapter.content.map((p, idx) => (
-            <p key={idx} className="mb-6 indent-8 text-justify break-words leading-relaxed tracking-wide">{p}</p>
-          ))}
-        </div>
-
-        <div className="flex justify-between items-center mt-16 pt-8 border-t border-current/10">
-          <button 
-            onClick={(e) => { e.stopPropagation(); handlePrev(); }}
-            disabled={!prevChapter}
-            className="px-6 py-3 rounded-full border border-current/20 disabled:opacity-30 flex items-center gap-2 hover:bg-current/5 transition-colors"
+        <h1 className="text-2xl font-bold mb-12 text-center shrink-0">{chapter.title}</h1>
+        
+        {readerSettings.turnMode === 'scroll' ? (
+          // 上下翻页（滚动模式）
+          <div className="flex-1 min-h-[50vh]">
+            {chapter.content.map((p, idx) => (
+              <p key={idx} className="mb-6 indent-8 text-justify break-words leading-relaxed tracking-wide">{p}</p>
+            ))}
+            <div className="flex justify-between items-center mt-16 pt-8 border-t border-current/10">
+              <button 
+                onClick={(e) => { e.stopPropagation(); handlePrev(); }}
+                disabled={!prevChapter}
+                className="px-6 py-3 rounded-full border border-current/20 disabled:opacity-30 flex items-center gap-2 hover:bg-current/5 transition-colors"
+              >
+                <ChevronLeft size={20} /> 上一章
+              </button>
+              <button 
+                onClick={(e) => { e.stopPropagation(); handleNext(); }}
+                disabled={!nextChapter}
+                className="px-6 py-3 rounded-full border border-current/20 disabled:opacity-30 flex items-center gap-2 hover:bg-current/5 transition-colors"
+              >
+                下一章 <ChevronRight size={20} />
+              </button>
+            </div>
+          </div>
+        ) : (
+          // 单页翻页（平移、覆盖、仿真等） - 使用 CSS Column 实现自动分页布局
+          <div 
+            className="flex-1 w-full overflow-hidden"
+            style={{
+              columnWidth: '100vw',
+              columnGap: '0',
+              height: '100%',
+              // 这里简化处理：通过多栏布局将长文本自动分割为屏幕宽度的横向“页面”
+              // 实际的翻页手势控制需要更复杂的 Touch Event 或引入第三方库，目前我们用点击左右区域触发章节切换
+            }}
           >
-            <ChevronLeft size={20} /> 上一章
-          </button>
-          <button 
-            onClick={(e) => { e.stopPropagation(); handleNext(); }}
-            disabled={!nextChapter}
-            className="px-6 py-3 rounded-full border border-current/20 disabled:opacity-30 flex items-center gap-2 hover:bg-current/5 transition-colors"
-          >
-            下一章 <ChevronRight size={20} />
-          </button>
-        </div>
+            {chapter.content.map((p, idx) => (
+              <p key={idx} className="mb-6 indent-8 text-justify break-words leading-relaxed tracking-wide">{p}</p>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Controls Overlay */}
@@ -238,22 +268,49 @@ export default function Reader() {
                 {/* Theme */}
                 <div className="flex items-center gap-4">
                   <span className="text-sm font-medium text-slate-700 dark:text-slate-300 w-10">背景</span>
-                  <div className="flex flex-1 gap-3">
+                  <div className="flex flex-1 gap-2 sm:gap-3">
                     {[
                       { id: 'day', name: '日间', color: 'bg-[#f8f9fa] border-slate-200 text-slate-800' },
                       { id: 'night', name: '夜间', color: 'bg-slate-900 border-slate-700 text-slate-300' },
                       { id: 'sepia', name: '护眼', color: 'bg-[#f4ebd9] border-[#e4dbc9] text-[#5c4b37]' },
+                      { id: 'green', name: '绿色', color: 'bg-[#cce8cf] border-[#b0d1b4] text-[#2c5234]' },
                     ].map(t => (
                       <button
                         key={t.id}
-                        onClick={() => updateReaderSettings({ theme: t.id as 'day' | 'night' | 'sepia' })}
+                        onClick={() => updateReaderSettings({ theme: t.id as 'day' | 'night' | 'sepia' | 'green' })}
                         className={clsx(
-                          'flex-1 py-2 rounded-full border-2 text-sm font-medium transition-all',
+                          'flex-1 py-1.5 sm:py-2 rounded-full border-2 text-xs sm:text-sm font-medium transition-all',
                           t.color,
                           readerSettings.theme === t.id ? 'border-blue-500 scale-105' : 'hover:scale-105'
                         )}
                       >
                         {t.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Turn Mode (翻页方式) */}
+                <div className="flex items-center gap-4">
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300 w-10">翻页</span>
+                  <div className="flex flex-1 gap-2 sm:gap-3">
+                    {[
+                      { id: 'scroll', name: '上下' },
+                      { id: 'slide', name: '平移' },
+                      { id: 'cover', name: '覆盖' },
+                      { id: 'simulate', name: '仿真' },
+                    ].map(mode => (
+                      <button
+                        key={mode.id}
+                        onClick={() => updateReaderSettings({ turnMode: mode.id as 'scroll' | 'slide' | 'cover' | 'simulate' })}
+                        className={clsx(
+                          'flex-1 py-1.5 rounded-full text-xs sm:text-sm font-medium border transition-colors',
+                          readerSettings.turnMode === mode.id 
+                            ? 'border-blue-500 text-blue-600 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-400' 
+                            : 'border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                        )}
+                      >
+                        {mode.name}
                       </button>
                     ))}
                   </div>
@@ -341,12 +398,21 @@ export default function Reader() {
                 className="absolute top-0 left-0 bottom-0 w-80 max-w-[80vw] bg-white dark:bg-slate-900 shadow-2xl pointer-events-auto flex flex-col transform transition-transform"
                 onClick={e => e.stopPropagation()}
               >
-                <div className="p-5 border-b dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
-                  <h3 className="font-bold text-lg text-slate-800 dark:text-slate-200">{book.title}</h3>
-                  <p className="text-sm text-slate-500 mt-1">共 {chapters.length} 章</p>
+                <div className="p-5 border-b dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex justify-between items-center">
+                  <div>
+                    <h3 className="font-bold text-lg text-slate-800 dark:text-slate-200">{book.title}</h3>
+                    <p className="text-sm text-slate-500 mt-1">共 {chapters.length} 章</p>
+                  </div>
+                  <button 
+                    onClick={() => setTocAscending(!tocAscending)}
+                    className="p-2 text-slate-500 hover:text-blue-500 transition-colors rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex flex-col items-center"
+                  >
+                    <ArrowUpDown size={18} />
+                    <span className="text-[10px] mt-1">{tocAscending ? '正序' : '逆序'}</span>
+                  </button>
                 </div>
                 <div className="flex-1 overflow-y-auto overscroll-contain">
-                  {chapters.map(c => (
+                  {(tocAscending ? chapters : [...chapters].reverse()).map(c => (
                     <button
                       key={c.id}
                       onClick={() => {

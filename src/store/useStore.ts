@@ -21,10 +21,11 @@ export interface HistoryItem {
 }
 
 interface ReaderSettings {
-  theme: 'day' | 'night' | 'sepia';
+  theme: 'day' | 'night' | 'sepia' | 'green';
   fontSize: number;
   fontFamily: string;
   lineHeight: number;
+  turnMode: 'slide' | 'cover' | 'simulate' | 'scroll';
 }
 
 interface User {
@@ -62,6 +63,7 @@ export const useStore = create<StoreState>()(
         fontSize: 18,
         fontFamily: 'sans',
         lineHeight: 1.8,
+        turnMode: 'scroll',
       },
       login: async (email, password) => {
         // Mock API call
