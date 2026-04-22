@@ -50,17 +50,17 @@ export default function Category() {
   return (
     <div className="space-y-6">
       {/* 筛选面板 */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-6">
+      <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-slate-100 p-3 sm:p-6 space-y-3 sm:space-y-6">
         {Object.entries(FILTER_OPTIONS).map(([category, options]) => (
-          <div key={category} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-            <span className="text-slate-400 text-sm font-medium w-12 shrink-0">{category}</span>
-            <div className="flex flex-wrap gap-2">
+          <div key={category} className="flex flex-row items-center gap-2 sm:gap-4">
+            <span className="text-slate-400 text-xs sm:text-sm font-medium w-8 sm:w-12 shrink-0">{category}</span>
+            <div className="flex-1 flex flex-row overflow-x-auto no-scrollbar gap-1.5 sm:gap-2 py-0.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
               {options.map(opt => (
                 <button
                   key={opt}
                   onClick={() => handleFilterChange(category, opt)}
                   className={clsx(
-                    'px-3 py-1 text-sm rounded-full transition-colors',
+                    'px-2.5 sm:px-3 py-1 text-[11px] sm:text-sm rounded-full transition-colors whitespace-nowrap shrink-0',
                     filters[category] === opt
                       ? 'bg-red-50 text-red-600 font-medium'
                       : 'text-slate-600 hover:bg-slate-50'
@@ -75,31 +75,31 @@ export default function Category() {
       </div>
 
       {/* 书籍列表 */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-        <div className="mb-6 flex items-center justify-between">
-          <h3 className="font-bold text-lg text-slate-800">全部作品</h3>
-          <span className="text-sm text-slate-500">共找到 {filteredBooks.length} 本书</span>
+      <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-slate-100 p-4 sm:p-6 min-h-0">
+        <div className="mb-4 sm:mb-6 flex items-center justify-between">
+          <h3 className="font-bold text-base sm:text-lg text-slate-800">全部作品</h3>
+          <span className="text-xs sm:text-sm text-slate-500">共找到 {filteredBooks.length} 本书</span>
         </div>
 
         {filteredBooks.length === 0 ? (
-          <div className="py-20 text-center text-slate-400">
+          <div className="py-20 text-center text-sm text-slate-400">
             没有找到符合条件的作品，换个筛选条件试试吧
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
             {filteredBooks.map(book => (
               <Link 
                 key={book.id} 
                 to={`/book/${book.id}`}
-                className="flex gap-4 group hover:bg-slate-50 p-3 rounded-xl transition-colors border border-transparent hover:border-slate-100"
+                className="flex gap-3 sm:gap-4 group hover:bg-slate-50 p-2 sm:p-3 rounded-xl transition-colors border border-transparent hover:border-slate-100"
               >
-                <img src={book.coverUrl} alt={book.title} className="w-20 h-28 object-cover rounded-lg shadow-sm shrink-0" />
-                <div className="flex-1 min-w-0 flex flex-col">
-                  <h4 className="font-bold text-slate-800 mb-1 group-hover:text-red-600 transition-colors truncate">{book.title}</h4>
-                  <p className="text-sm text-slate-500 line-clamp-2 mb-2 flex-1 leading-relaxed">{book.shortDesc}</p>
-                  <div className="flex items-center justify-between text-xs text-slate-400 mt-auto">
-                    <span className="flex items-center gap-1 font-medium text-slate-600"><BookOpen className="w-3 h-3"/> {book.author}</span>
-                    <div className="flex gap-2">
+                <img src={book.coverUrl} alt={book.title} className="w-16 h-24 sm:w-20 sm:h-28 object-cover rounded-lg shadow-sm shrink-0" />
+                <div className="flex-1 min-w-0 flex flex-col justify-center py-0.5">
+                  <h4 className="font-bold text-sm sm:text-base text-slate-800 mb-1 group-hover:text-red-600 transition-colors truncate">{book.title}</h4>
+                  <p className="text-xs sm:text-sm text-slate-500 line-clamp-2 mb-2 leading-relaxed break-words">{book.shortDesc}</p>
+                  <div className="flex items-center justify-between text-[10px] sm:text-xs text-slate-400 mt-auto">
+                    <span className="flex items-center gap-1 font-medium text-slate-600 truncate max-w-[40%]"><BookOpen className="w-3 h-3 shrink-0"/> <span className="truncate">{book.author}</span></span>
+                    <div className="flex gap-1.5 sm:gap-2 shrink-0">
                       <span className="bg-slate-100 px-1.5 py-0.5 rounded">{book.category}</span>
                       <span className="bg-slate-100 px-1.5 py-0.5 rounded">{book.status}</span>
                       <span className="bg-slate-100 px-1.5 py-0.5 rounded hidden sm:inline">{book.wordCount}</span>
