@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import Home from './pages/Home';
 import BookDetail from './pages/BookDetail';
@@ -13,7 +13,7 @@ import RequireAuth from './components/RequireAuth';
 
 function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<Home />} />
@@ -34,7 +34,7 @@ function App() {
         </Route>
         <Route path="read/:id/:chapterId" element={<Reader />} />
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 
