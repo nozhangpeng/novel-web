@@ -185,7 +185,7 @@ export default function Home() {
             </div>
             
             <div 
-              className="relative h-[340px] md:h-[380px] w-full flex items-center justify-center overflow-visible sm:overflow-hidden mt-2 sm:mt-4"
+              className="relative h-[340px] md:h-[380px] w-full flex items-center justify-center overflow-hidden mt-2 sm:mt-4"
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
