@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小说导出 - 手动勾选交互草图</title>
+    <style>
+        body { font-family: 'PingFang SC', sans-serif; background: #f0f2f5; margin: 0; padding: 20px; }
+        .export-dialog {
+            max-width: 500px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            overflow: hidden;
+        }
+        .dialog-header {
+            background: #007bff;
+            color: white;
+            padding: 15px 20px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .dialog-body {
+            padding: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .instruction {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 15px;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 6px;
+            border-left: 3px solid #007bff;
+        }
+        .message-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .message-item:hover {
+            background: #f8f9fa;
+            border-color: #007bff;
+        }
+        .message-item.selected {
+            background: #e8f4ff;
+            border-color: #007bff;
+        }
+        .checkbox-wrapper {
+            padding-top: 3px;
+        }
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #007bff;
+        }
+        .content-preview {
+            flex: 1;
+        }
+        .content-title {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+            font-size: 0.95rem;
+        }
+        .content-snippet {
+            font-size: 0.85rem;
+            color: #777;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .dialog-footer {
+            padding: 15px 20px;
+            border-top: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #fafafa;
+        }
+        .selected-count {
+            font-size: 0.9rem;
+            color: #555;
+        }
+        .btn-group {
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            border: none;
+            font-weight: bold;
+        }
+        .btn-cancel {
+            background: #e9ecef;
+            color: #495057;
+        }
+        .btn-confirm {
+            background: #007bff;
+            color: white;
+        }
+        .btn-confirm:disabled {
+            background: #a5cfff;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="export-dialog">
+        <div class="dialog-header">
+            <span>导出小说 (HTML)</span>
+            <span style="font-size: 1.2rem; cursor: pointer;">&times;</span>
+        </div>
+        <div class="dialog-body">
+            <div class="instruction">
+                请勾选你想要合并导出的内容段落。系统会自动过滤掉对话中的闲聊部分。
+            </div>
+            
+            <div class="message-item selected" onclick="toggleSelect(this, 'cb1')">
+                <div class="checkbox-wrapper">
+                    <input type="checkbox" id="cb1" checked onclick="event.stopPropagation()">
+                </div>
+                <div class="content-preview">
+                    <div class="content-title">第一章：深渊的凝望</div>
+                    <div class="content-snippet">这是一个被灰烬覆盖的世界。天空永远是铅灰色的，阳光像是被某种无形的滤网过滤过，落到地面上时只剩下惨淡的白晕...</div>
+                </div>
+            </div>
+
+            <div class="message-item" onclick="toggleSelect(this, 'cb2')">
+                <div class="checkbox-wrapper">
+                    <input type="checkbox" id="cb2" onclick="event.stopPropagation()">
+                </div>
+                <div class="content-preview">
+                    <div class="content-title">（AI 闲聊分析 - 建议不勾选）</div>
+                    <div class="content-snippet">好的，关于你提到的林克的性格塑造，我认为可以加入一些他在废墟中独自生存的细节。比如他对于晶体的执念...</div>
+                </div>
+            </div>
+
+            <div class="message-item selected" onclick="toggleSelect(this, 'cb3')">
+                <div class="checkbox-wrapper">
+                    <input type="checkbox" id="cb3" checked onclick="event.stopPropagation()">
+                </div>
+                <div class="content-preview">
+                    <div class="content-title">第二章：遗迹的回声</div>
+                    <div class="content-snippet">林克和艾达踏入了地下遗迹的入口。黑暗如同实质般向他们压来，只有晶体微弱的蓝光勉强照亮前方的石阶...</div>
+                </div>
+            </div>
+        </div>
+        <div class="dialog-footer">
+            <div class="selected-count">已选择 <span id="countStr" style="font-weight:bold;color:#007bff;">2</span> 段内容</div>
+            <div class="btn-group">
+                <button class="btn btn-cancel">取消</button>
+                <button class="btn btn-confirm" id="confirmBtn" onclick="alert('开始生成合并的 HTML 文件！')">生成文件</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleSelect(item, checkboxId) {
+            const cb = document.getElementById(checkboxId);
+            cb.checked = !cb.checked;
+            updateStyle(item, cb.checked);
+            updateCount();
+        }
+
+        // 监听直接点击 checkbox 的事件
+        document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            cb.addEventListener('change', function(e) {
+                const item = this.closest('.message-item');
+                updateStyle(item, this.checked);
+                updateCount();
+            });
+        });
+
+        function updateStyle(item, isChecked) {
+            if(isChecked) {
+                item.classList.add('selected');
+            } else {
+                item.classList.remove('selected');
+            }
+        }
+
+        function updateCount() {
+            const count = document.querySelectorAll('input[type="checkbox"]:checked').length;
+            document.getElementById('countStr').innerText = count;
+            document.getElementById('confirmBtn').disabled = (count === 0);
+        }
+    </script>
+</body>
+</html>
