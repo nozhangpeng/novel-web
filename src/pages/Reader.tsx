@@ -3,9 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { getBookById, getChaptersByBookId, Book, Chapter } from '../mock/data';
 import { getLocalChapters } from '../utils/localBook';
+import { exportBookToHtml } from '../utils/exportHtml';
 import { 
   Settings, List, ChevronLeft, ChevronRight, 
-  ArrowLeft, Moon, Sun, Loader2, ArrowUpDown
+  ArrowLeft, Moon, Sun, Loader2, ArrowUpDown, Download
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -233,14 +234,14 @@ export default function Reader() {
             onClick={e => e.stopPropagation()}
           >
             <button 
-              className="flex flex-col items-center p-3 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors w-20"
+              className="flex flex-col items-center p-3 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors w-16"
               onClick={() => { setShowToc(!showToc); setShowSettings(false); }}
             >
               <List size={22} />
               <span className="text-[11px] mt-1.5">目录</span>
             </button>
             <button 
-              className="flex flex-col items-center p-3 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors w-20"
+              className="flex flex-col items-center p-3 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors w-16"
               onClick={() => {
                 const newTheme = readerSettings.theme === 'day' ? 'night' : 'day';
                 updateReaderSettings({ theme: newTheme });
@@ -250,11 +251,18 @@ export default function Reader() {
               <span className="text-[11px] mt-1.5">{readerSettings.theme === 'night' ? '日间' : '夜间'}</span>
             </button>
             <button 
-              className="flex flex-col items-center p-3 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors w-20"
+              className="flex flex-col items-center p-3 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors w-16"
               onClick={() => { setShowSettings(!showSettings); setShowToc(false); }}
             >
               <Settings size={22} />
               <span className="text-[11px] mt-1.5">设置</span>
+            </button>
+            <button 
+              className="flex flex-col items-center p-3 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors w-16"
+              onClick={() => exportBookToHtml(book, chapters)}
+            >
+              <Download size={22} />
+              <span className="text-[11px] mt-1.5">导出</span>
             </button>
           </div>
 
