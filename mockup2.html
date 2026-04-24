@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>《废墟之光》- 累计分享版</title>
+    <style>
+        :root {
+            --bg-color: #f8f9fa;
+            --text-color: #333;
+            --container-bg: #fff;
+            --border-color: #eee;
+            --primary-color: #007bff;
+        }
+        body {
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.8;
+            margin: 0;
+            padding: 0;
+            display: flex;
+        }
+        .sidebar {
+            width: 250px;
+            background: var(--container-bg);
+            border-right: 1px solid var(--border-color);
+            height: 100vh;
+            position: fixed;
+            overflow-y: auto;
+            padding: 20px;
+            box-sizing: border-box;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.02);
+        }
+        .sidebar h2 {
+            font-size: 1.2rem;
+            margin-top: 0;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--primary-color);
+        }
+        .sidebar ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .sidebar li {
+            padding: 10px 0;
+            border-bottom: 1px dashed var(--border-color);
+            cursor: pointer;
+            color: #666;
+            transition: color 0.2s;
+        }
+        .sidebar li:hover, .sidebar li.active {
+            color: var(--primary-color);
+            font-weight: bold;
+        }
+        .main-content {
+            margin-left: 250px;
+            width: calc(100% - 250px);
+            padding: 40px;
+            box-sizing: border-box;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: var(--container-bg);
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+        }
+        .chapter-title {
+            font-size: 1.8rem;
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 20px;
+        }
+        .content p {
+            font-size: 1.1rem;
+            text-indent: 2em;
+            margin-bottom: 15px;
+        }
+        .export-info {
+            text-align: center;
+            font-size: 0.9rem;
+            color: #999;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+        }
+        @media (max-width: 768px) {
+            .sidebar { display: none; }
+            .main-content { margin-left: 0; width: 100%; padding: 20px 10px; }
+            .container { padding: 20px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <h2>《废墟之光》</h2>
+        <ul>
+            <li class="active">第一章：深渊的凝望</li>
+            <li>第二章：遗迹的回声</li>
+            <li>第三章：灰烬中的火种</li>
+        </ul>
+        <div style="margin-top:20px; font-size: 0.8rem; color:#888;">
+            导出时间: 2026-04-24
+        </div>
+    </div>
+    <div class="main-content">
+        <div class="container">
+            <h1 class="chapter-title">第一章：深渊的凝望</h1>
+            <div class="content">
+                <p>这是一个被灰烬覆盖的世界。天空永远是铅灰色的，阳光像是被某种无形的滤网过滤过，落到地面上时只剩下惨淡的白晕。</p>
+                <p>林克站在废墟的高处，狂风卷起他破旧的风衣下摆。他的手中紧紧握着那枚刚刚从遗迹深处带出来的晶体。这枚晶体散发着微弱的蓝光，在这个灰暗的世界里显得格格不入。</p>
+                <p>“我们真的要把它带回去吗？”身后的通讯器里传来艾达沙哑的声音，带着一丝无法掩饰的颤抖。</p>
+                <p>林克没有立刻回答。他凝视着远方地平线上那道巨大的黑色裂缝——人们称之为‘深渊’。晶体的光芒在呼吸间闪烁，仿佛在回应着深渊的某种呼唤。</p>
+                <p>“这是我们最后的希望了，艾达。”林克深吸了一口气，将晶体收入怀中，“哪怕这意味着我们要直面深渊。”</p>
+                <p>就在这时，地平线上的黑色裂缝突然开始扭曲，一声低沉的轰鸣穿透了厚重的云层，整个废墟开始剧烈地震动起来...</p>
+            </div>
+            <div class="export-info">
+                由 AI 助手生成并导出 · 累计 3 章内容
+            </div>
+        </div>
+    </div>
+</body>
+</html>
