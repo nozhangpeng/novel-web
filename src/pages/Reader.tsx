@@ -35,9 +35,17 @@ export default function Reader() {
         let loadedChapters: Chapter[] = [];
         
         if (id?.startsWith('local_')) {
-          const currentBookshelf = useStore.getState().bookshelf;
-          const localBookItem = currentBookshelf.find(b => b.bookId === id);
-          loadedBook = localBookItem ? localBookItem.bookInfo : null;
+          const state = useStore.getState();
+          const localBookItem = state.bookshelf.find(b => b.bookId === id);
+          
+          if (localBookItem) {
+            loadedBook = localBookItem.bookInfo;
+          } else {
+            // 如果不在书架上，尝试从阅读历史中恢复数据
+            const historyItem = state.readingHistory.find(h => h.bookId === id);
+            loadedBook = historyItem ? historyItem.bookInfo : null;
+          }
+          
           loadedChapters = await getLocalChapters(id);
         } else {
           loadedBook = getBookById(id!) || null;
@@ -155,11 +163,11 @@ export default function Reader() {
 
   // 根据翻页模式设置不同的容器样式
   const getContainerStyle = () => {
-    if (readerSettings.turnMode === 'scroll') {
+    if (readerSettings.turnMode === 'scroll' || !readerSettings.turnMode) {
       return "max-w-3xl mx-auto px-6 py-12 pb-32 min-h-screen flex flex-col cursor-pointer";
     }
-    // 非上下翻页模式（如平移、覆盖、仿真等）时，将页面限制为全屏高度并隐藏超出内容，模拟阅读器单页效果
-    return "max-w-3xl mx-auto px-6 py-12 h-screen overflow-hidden flex flex-col cursor-pointer";
+    // 非上下翻页模式（如平移、覆盖、仿真等）时，使用横向滚动容器
+    return "w-full mx-auto px-6 py-12 h-[100dvh] flex flex-col cursor-pointer relative";
   };
 
   return (
@@ -181,7 +189,7 @@ export default function Reader() {
       >
         <h1 className="text-2xl font-bold mb-12 text-center shrink-0">{chapter.title}</h1>
         
-        {readerSettings.turnMode === 'scroll' ? (
+        {readerSettings.turnMode === 'scroll' || !readerSettings.turnMode ? (
           // 上下翻页（滚动模式）
           <div className="flex-1 min-h-[50vh]">
             {chapter.content.map((p, idx) => (
@@ -205,19 +213,18 @@ export default function Reader() {
             </div>
           </div>
         ) : (
-          // 单页翻页（平移、覆盖、仿真等） - 使用 CSS Column 实现自动分页布局
+          // 单页翻页（平移、覆盖、仿真等） - 使用 CSS Column 实现横向滚动分页
           <div 
-            className="flex-1 w-full overflow-hidden"
+            className="flex-1 w-full overflow-x-auto overflow-y-hidden snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             style={{
               columnWidth: '100vw',
-              columnGap: '0',
+              columnGap: '1.5rem',
               height: '100%',
-              // 这里简化处理：通过多栏布局将长文本自动分割为屏幕宽度的横向“页面”
-              // 实际的翻页手势控制需要更复杂的 Touch Event 或引入第三方库，目前我们用点击左右区域触发章节切换
+              paddingBottom: '2rem'
             }}
           >
             {chapter.content.map((p, idx) => (
-              <p key={idx} className="mb-6 indent-8 text-justify break-words leading-relaxed tracking-wide">{p}</p>
+              <p key={idx} className="mb-6 indent-8 text-justify break-words leading-relaxed tracking-wide snap-center max-w-[100vw]">{p}</p>
             ))}
           </div>
         )}
