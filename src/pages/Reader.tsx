@@ -81,6 +81,17 @@ export default function Reader() {
     window.scrollTo(0, 0);
   }, [chapter, book, id, isInBookshelf, updateReadProgress, addReadingHistory]);
 
+  useEffect(() => {
+    if (showToc && chapterId) {
+      setTimeout(() => {
+        const activeItem = document.getElementById(`toc-item-${chapterId}`);
+        if (activeItem) {
+          activeItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
+    }
+  }, [showToc, chapterId]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900">
@@ -141,18 +152,6 @@ export default function Reader() {
       setShowControls(true);
     }
   };
-
-  // 处理目录展开时自动滚动到当前章节高亮位置
-  useEffect(() => {
-    if (showToc && chapterId) {
-      setTimeout(() => {
-        const activeItem = document.getElementById(`toc-item-${chapterId}`);
-        if (activeItem) {
-          activeItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      }, 100);
-    }
-  }, [showToc, chapterId]);
 
   const themeStyles = {
     day: 'bg-[#f8f9fa] text-slate-900',
