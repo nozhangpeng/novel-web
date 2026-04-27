@@ -134,6 +134,18 @@ export default function Reader() {
     }
   };
 
+  // 处理目录展开时自动滚动到当前章节高亮位置
+  useEffect(() => {
+    if (showToc && chapterId) {
+      setTimeout(() => {
+        const activeItem = document.getElementById(`toc-item-${chapterId}`);
+        if (activeItem) {
+          activeItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
+    }
+  }, [showToc, chapterId]);
+
   const themeStyles = {
     day: 'bg-[#f8f9fa] text-slate-900',
     night: 'bg-slate-900 text-slate-300',
@@ -423,6 +435,7 @@ export default function Reader() {
                   {(tocAscending ? chapters : [...chapters].reverse()).map(c => (
                     <button
                       key={c.id}
+                      id={`toc-item-${c.id}`}
                       onClick={() => {
                         navigate(`/read/${id}/${c.id}`, { replace: true });
                         setShowToc(false);
@@ -431,7 +444,7 @@ export default function Reader() {
                       className={clsx(
                         'w-full text-left px-5 py-4 text-sm border-b dark:border-slate-800/50 transition-colors',
                         c.id === chapterId 
-                          ? 'text-blue-600 dark:text-blue-400 font-medium bg-blue-50/50 dark:bg-blue-900/10' 
+                          ? 'text-red-600 dark:text-red-500 font-bold bg-red-50 dark:bg-red-900/20' 
                           : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                       )}
                     >
