@@ -20,6 +20,15 @@ export interface HistoryItem {
   readTimestamp: number;
 }
 
+export interface ReaderBookmark {
+  id: string;
+  bookId: string;
+  chapterId: string;
+  paragraphIndex: number;
+  excerpt: string;
+  createdAt: number;
+}
+
 interface ReaderSettings {
   theme: 'day' | 'night' | 'sepia' | 'green';
   fontSize: number;
@@ -38,6 +47,7 @@ interface StoreState {
   user: User | null;
   bookshelf: BookshelfItem[];
   readingHistory: HistoryItem[];
+  bookmarksByBookId: Record<string, ReaderBookmark[]>;
   readerSettings: ReaderSettings;
   login: (email: string, password: string) => Promise<void>;
   register: (username: string, email: string, password: string) => Promise<void>;
@@ -50,6 +60,8 @@ interface StoreState {
   removeReadingHistory: (bookId: string) => void;
   clearReadingHistory: () => void;
   updateReaderSettings: (settings: Partial<ReaderSettings>) => void;
+  toggleBookmark: (bookId: string, chapterId: string, paragraphIndex: number, excerpt: string) => void;
+  removeBookmark: (bookId: string, bookmarkId: string) => void;
 }
 
 export const useStore = create<StoreState>()(
@@ -58,6 +70,7 @@ export const useStore = create<StoreState>()(
       user: null,
       bookshelf: [],
       readingHistory: [],
+      bookmarksByBookId: {},
       readerSettings: {
         theme: 'day',
         fontSize: 18,
@@ -161,6 +174,41 @@ export const useStore = create<StoreState>()(
         set((state) => ({
           readerSettings: { ...state.readerSettings, ...settings },
         })),
+      toggleBookmark: (bookId, chapterId, paragraphIndex, excerpt) =>
+        set((state) => {
+          const current = state.bookmarksByBookId[bookId] || [];
+          const id = `${chapterId}:${paragraphIndex}`;
+          const exists = current.some((b) => b.id === id);
+          const next = exists
+            ? current.filter((b) => b.id !== id)
+            : [
+                {
+                  id,
+                  bookId,
+                  chapterId,
+                  paragraphIndex,
+                  excerpt,
+                  createdAt: Date.now(),
+                },
+                ...current,
+              ];
+          return {
+            bookmarksByBookId: {
+              ...state.bookmarksByBookId,
+              [bookId]: next,
+            },
+          };
+        }),
+      removeBookmark: (bookId, bookmarkId) =>
+        set((state) => {
+          const current = state.bookmarksByBookId[bookId] || [];
+          return {
+            bookmarksByBookId: {
+              ...state.bookmarksByBookId,
+              [bookId]: current.filter((b) => b.id !== bookmarkId),
+            },
+          };
+        }),
     }),
     {
       name: 'qidian-bookshelf-storage',

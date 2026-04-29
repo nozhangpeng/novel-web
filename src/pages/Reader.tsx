@@ -1,24 +1,38 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { getBookById, getChaptersByBookId, Book, Chapter } from '../mock/data';
 import { getLocalChapters } from '../utils/localBook';
 import { exportBookToHtml } from '../utils/exportHtml';
 import { 
   Settings, List, ChevronLeft, ChevronRight, 
-  ArrowLeft, Moon, Sun, Loader2, ArrowUpDown, Download
+  ArrowLeft, Moon, Sun, Loader2, ArrowUpDown, Download, Bookmark, Trash2
 } from 'lucide-react';
 import clsx from 'clsx';
 
 export default function Reader() {
   const { id, chapterId } = useParams<{ id: string; chapterId: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const paragraphParam = searchParams.get('p');
   
-  const { readerSettings, updateReaderSettings, updateReadProgress, bookshelf, addReadingHistory } = useStore();
+  const { 
+    readerSettings, 
+    updateReaderSettings, 
+    updateReadProgress, 
+    bookshelf, 
+    addReadingHistory,
+    bookmarksByBookId,
+    toggleBookmark,
+    removeBookmark
+  } = useStore();
   const [showControls, setShowControls] = useState(false);
   const [showToc, setShowToc] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [tocAscending, setTocAscending] = useState(true);
+  const [showBookmarks, setShowBookmarks] = useState(false);
+  const [activeParagraphIndex, setActiveParagraphIndex] = useState(0);
+  const [toast, setToast] = useState<string | null>(null);
 
   const [book, setBook] = useState<Book | null>(null);
   const [chapter, setChapter] = useState<Chapter | null>(null);
@@ -26,6 +40,71 @@ export default function Reader() {
   const [loading, setLoading] = useState(true);
 
   const isInBookshelf = bookshelf.some(b => b.bookId === id);
+  const toastTimerRef = useRef<number | null>(null);
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressTriggeredRef = useRef(false);
+  const pagedContainerRef = useRef<HTMLDivElement | null>(null);
+  const contentContainerRef = useRef<HTMLDivElement | null>(null);
+  const [pendingScrollTarget, setPendingScrollTarget] = useState<{ chapterId: string; paragraphIndex: number } | null>(null);
+
+  const bookmarks = useMemo(() => {
+    if (!id) return [];
+    return bookmarksByBookId[id] || [];
+  }, [bookmarksByBookId, id]);
+
+  const bookmarkedParagraphsInChapter = useMemo(() => {
+    if (!chapterId) return new Set<number>();
+    const set = new Set<number>();
+    for (const b of bookmarks) {
+      if (b.chapterId === chapterId) {
+        set.add(b.paragraphIndex);
+      }
+    }
+    return set;
+  }, [bookmarks, chapterId]);
+
+  const chapterTitleById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of chapters) {
+      map.set(c.id, c.title);
+    }
+    return map;
+  }, [chapters]);
+
+  useEffect(() => {
+    if (toast == null) return;
+    if (toastTimerRef.current != null) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = window.setTimeout(() => setToast(null), 1200);
+    return () => {
+      if (toastTimerRef.current != null) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, [toast]);
+
+  useEffect(() => {
+    if (!chapterId || paragraphParam == null) return;
+    if (pendingScrollTarget?.chapterId === chapterId && pendingScrollTarget.paragraphIndex === Number(paragraphParam)) {
+      return;
+    }
+    const idx = Number(paragraphParam);
+    if (!Number.isFinite(idx) || idx < 0) {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('p');
+        return next;
+      }, { replace: true });
+      return;
+    }
+    setPendingScrollTarget({ chapterId, paragraphIndex: idx });
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('p');
+      return next;
+    }, { replace: true });
+  }, [chapterId, paragraphParam, pendingScrollTarget, setSearchParams]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -92,6 +171,67 @@ export default function Reader() {
     }
   }, [showToc, chapterId]);
 
+  useEffect(() => {
+    if (!pendingScrollTarget) return;
+    if (pendingScrollTarget.chapterId !== chapterId) return;
+    if (!chapter) return;
+    const targetId = `p-${pendingScrollTarget.chapterId}-${pendingScrollTarget.paragraphIndex}`;
+    const scrollContainer = readerSettings.turnMode === 'scroll' ? null : pagedContainerRef.current;
+    setTimeout(() => {
+      const el = document.getElementById(targetId);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'start' });
+      } else {
+        window.scrollTo(0, 0);
+        if (scrollContainer) {
+          scrollContainer.scrollTo({ left: 0, behavior: 'smooth' });
+        }
+      }
+      setPendingScrollTarget(null);
+    }, 60);
+  }, [pendingScrollTarget, chapterId, chapter, readerSettings.turnMode]);
+
+  useEffect(() => {
+    if (!chapterId) return;
+    if (!chapter) return;
+    const root = readerSettings.turnMode === 'scroll' ? null : pagedContainerRef.current;
+    const container = contentContainerRef.current;
+    if (!container) return;
+
+    const nodes = Array.from(container.querySelectorAll<HTMLElement>(`[data-paragraph="true"][data-chapter-id="${chapterId}"]`));
+    if (nodes.length === 0) return;
+
+    const pickBest = (entries: IntersectionObserverEntry[]) => {
+      let best: { idx: number; ratio: number; dist: number } | null = null;
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const el = entry.target as HTMLElement;
+        const idxStr = el.dataset.paragraphIndex;
+        if (!idxStr) continue;
+        const idx = Number(idxStr);
+        if (!Number.isFinite(idx)) continue;
+        const rect = entry.boundingClientRect;
+        const rootRect = entry.rootBounds;
+        const centerY = rect.top + rect.height / 2;
+        const baseCenterY = rootRect ? rootRect.top + rootRect.height / 2 : window.innerHeight / 2;
+        const dist = Math.abs(centerY - baseCenterY);
+        const ratio = entry.intersectionRatio;
+        if (!best || ratio > best.ratio || (ratio === best.ratio && dist < best.dist)) {
+          best = { idx, ratio, dist };
+        }
+      }
+      if (best) setActiveParagraphIndex(best.idx);
+    };
+
+    const observer = new IntersectionObserver(pickBest, {
+      root,
+      threshold: [0.25, 0.5, 0.75],
+    });
+
+    nodes.forEach((n) => observer.observe(n));
+    return () => observer.disconnect();
+  }, [chapterId, chapter, readerSettings.turnMode, readerSettings.fontSize, readerSettings.lineHeight]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900">
@@ -100,6 +240,7 @@ export default function Reader() {
       </div>
     );
   }
+
 
   if (!book || !chapter) {
     return (
@@ -160,6 +301,13 @@ export default function Reader() {
     green: 'bg-[#cce8cf] text-[#2c5234]',
   };
 
+  const bookmarkHighlightStyles = {
+    day: 'bg-amber-200/40',
+    night: 'bg-slate-700/40',
+    sepia: 'bg-amber-300/35',
+    green: 'bg-emerald-200/50',
+  };
+
   // 根据翻页模式设置不同的容器样式
   const getContainerStyle = () => {
     if (readerSettings.turnMode === 'scroll' || !readerSettings.turnMode) {
@@ -177,9 +325,17 @@ export default function Reader() {
       )}
       onClick={handleScreenClick}
     >
+      {toast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] pointer-events-none">
+          <div className="px-4 py-2 rounded-full bg-black/70 text-white text-sm backdrop-blur">
+            {toast}
+          </div>
+        </div>
+      )}
       {/* Content */}
       <div 
         className={getContainerStyle()}
+        ref={contentContainerRef}
         style={{ 
           fontSize: `${readerSettings.fontSize}px`,
           lineHeight: readerSettings.lineHeight,
@@ -192,7 +348,19 @@ export default function Reader() {
           // 上下翻页（滚动模式）
           <div className="flex-1 min-h-[50vh]">
             {chapter.content.map((p, idx) => (
-              <p key={idx} className="mb-6 indent-8 text-justify break-words leading-relaxed tracking-wide">{p}</p>
+              <p
+                key={idx}
+                id={`p-${chapterId}-${idx}`}
+                data-paragraph="true"
+                data-chapter-id={chapterId}
+                data-paragraph-index={idx}
+                className={clsx(
+                  'mb-6 indent-8 text-justify break-words leading-relaxed tracking-wide rounded-lg px-2 py-1 -mx-2',
+                  bookmarkedParagraphsInChapter.has(idx) ? bookmarkHighlightStyles[readerSettings.theme] : ''
+                )}
+              >
+                {p}
+              </p>
             ))}
             <div className="flex justify-between items-center mt-16 pt-8 border-t border-current/10">
               <button 
@@ -215,6 +383,7 @@ export default function Reader() {
           // 单页翻页（平移、覆盖、仿真等） - 使用 CSS Column 实现横向滚动分页
           <div 
             className="flex-1 w-full overflow-x-auto overflow-y-hidden snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            ref={pagedContainerRef}
             style={{
               columnWidth: '100vw',
               columnGap: '1.5rem',
@@ -223,7 +392,19 @@ export default function Reader() {
             }}
           >
             {chapter.content.map((p, idx) => (
-              <p key={idx} className="mb-6 indent-8 text-justify break-words leading-relaxed tracking-wide snap-center max-w-[100vw]">{p}</p>
+              <p
+                key={idx}
+                id={`p-${chapterId}-${idx}`}
+                data-paragraph="true"
+                data-chapter-id={chapterId}
+                data-paragraph-index={idx}
+                className={clsx(
+                  'mb-6 indent-8 text-justify break-words leading-relaxed tracking-wide snap-center max-w-[100vw] rounded-lg px-2 py-1 -mx-2',
+                  bookmarkedParagraphsInChapter.has(idx) ? bookmarkHighlightStyles[readerSettings.theme] : ''
+                )}
+              >
+                {p}
+              </p>
             ))}
           </div>
         )}
@@ -253,10 +434,40 @@ export default function Reader() {
           >
             <button 
               className="flex flex-col items-center p-3 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors w-16"
-              onClick={() => { setShowToc(!showToc); setShowSettings(false); }}
+              onClick={() => { setShowToc(!showToc); setShowSettings(false); setShowBookmarks(false); }}
             >
               <List size={22} />
               <span className="text-[11px] mt-1.5">目录</span>
+            </button>
+            <button 
+              className="flex flex-col items-center p-3 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors w-16"
+              onPointerDown={() => {
+                if (!id || !chapterId || !chapter) return;
+                longPressTriggeredRef.current = false;
+                if (longPressTimerRef.current != null) window.clearTimeout(longPressTimerRef.current);
+                longPressTimerRef.current = window.setTimeout(() => {
+                  const idx = Math.max(0, Math.min(activeParagraphIndex, chapter.content.length - 1));
+                  const raw = chapter.content[idx] || '';
+                  const excerpt = raw.trim().slice(0, 30);
+                  toggleBookmark(id, chapterId, idx, excerpt);
+                  const exists = bookmarkedParagraphsInChapter.has(idx);
+                  setToast(exists ? '已取消书签' : '已添加书签');
+                  longPressTriggeredRef.current = true;
+                }, 450);
+              }}
+              onPointerUp={() => {
+                if (longPressTimerRef.current != null) window.clearTimeout(longPressTimerRef.current);
+                if (longPressTriggeredRef.current) return;
+                setShowBookmarks(!showBookmarks);
+                setShowToc(false);
+                setShowSettings(false);
+              }}
+              onPointerCancel={() => {
+                if (longPressTimerRef.current != null) window.clearTimeout(longPressTimerRef.current);
+              }}
+            >
+              <Bookmark size={22} />
+              <span className="text-[11px] mt-1.5">书签</span>
             </button>
             <button 
               className="flex flex-col items-center p-3 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors w-16"
@@ -270,7 +481,7 @@ export default function Reader() {
             </button>
             <button 
               className="flex flex-col items-center p-3 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors w-16"
-              onClick={() => { setShowSettings(!showSettings); setShowToc(false); }}
+              onClick={() => { setShowSettings(!showSettings); setShowToc(false); setShowBookmarks(false); }}
             >
               <Settings size={22} />
               <span className="text-[11px] mt-1.5">设置</span>
@@ -457,6 +668,65 @@ export default function Reader() {
                       {c.title}
                     </button>
                   ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {showBookmarks && (
+            <>
+              <div 
+                className="absolute inset-0 bg-black/20 pointer-events-auto"
+                onClick={() => setShowBookmarks(false)}
+              />
+              <div 
+                className="absolute top-0 left-0 bottom-0 w-80 max-w-[80vw] bg-white dark:bg-slate-900 shadow-2xl pointer-events-auto flex flex-col transform transition-transform"
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="p-5 border-b dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
+                  <h3 className="font-bold text-lg text-slate-800 dark:text-slate-200">书签</h3>
+                  <p className="text-sm text-slate-500 mt-1">共 {bookmarks.length} 条</p>
+                </div>
+                <div className="flex-1 overflow-y-auto overscroll-contain">
+                  {bookmarks.length === 0 ? (
+                    <div className="p-6 text-sm text-slate-500">长按底部“书签”可添加当前段落书签</div>
+                  ) : (
+                    bookmarks.map((b) => (
+                      <div key={b.id} className="border-b dark:border-slate-800/50 px-5 py-4">
+                        <button
+                          className="w-full text-left"
+                          onClick={() => {
+                            const url = `/read/${id}/${b.chapterId}?p=${b.paragraphIndex}`;
+                            navigate(url, { replace: true });
+                            setShowBookmarks(false);
+                            setShowControls(false);
+                          }}
+                        >
+                          <div className="text-sm font-medium text-slate-800 dark:text-slate-200 line-clamp-1">
+                            {chapterTitleById.get(b.chapterId) || b.chapterId}
+                          </div>
+                          <div className="text-xs text-slate-500 mt-1 line-clamp-2">
+                            {b.excerpt}
+                          </div>
+                          <div className="text-[11px] text-slate-400 mt-2">
+                            {new Date(b.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        </button>
+                        <div className="mt-3 flex justify-end">
+                          <button
+                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                            onClick={() => {
+                              if (!id) return;
+                              removeBookmark(id, b.id);
+                              setToast('已删除书签');
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </>
