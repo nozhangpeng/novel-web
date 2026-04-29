@@ -24,7 +24,10 @@ export default function Reader() {
     addReadingHistory,
     bookmarksByBookId,
     toggleBookmark,
-    removeBookmark
+    removeBookmark,
+    setReadingPosition,
+    readingStatsByBookId,
+    addReadingTime
   } = useStore();
   const [showControls, setShowControls] = useState(false);
   const [showToc, setShowToc] = useState(false);
@@ -33,6 +36,7 @@ export default function Reader() {
   const [showBookmarks, setShowBookmarks] = useState(false);
   const [activeParagraphIndex, setActiveParagraphIndex] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
+  const [sessionMs, setSessionMs] = useState(0);
 
   const [book, setBook] = useState<Book | null>(null);
   const [chapter, setChapter] = useState<Chapter | null>(null);
@@ -45,7 +49,14 @@ export default function Reader() {
   const longPressTriggeredRef = useRef(false);
   const pagedContainerRef = useRef<HTMLDivElement | null>(null);
   const contentContainerRef = useRef<HTMLDivElement | null>(null);
+  const progressBarRef = useRef<HTMLDivElement | null>(null);
   const [pendingScrollTarget, setPendingScrollTarget] = useState<{ chapterId: string; paragraphIndex: number } | null>(null);
+  const latestPositionRef = useRef<{ bookId: string; chapterId: string; paragraphIndex: number } | null>(null);
+  const saveTimerRef = useRef<number | null>(null);
+  const restoreAppliedRef = useRef<string | null>(null);
+  const sessionStartRef = useRef<number | null>(null);
+  const sessionAccumulatedRef = useRef(0);
+  const totalReadingMs = useMemo(() => (id ? (readingStatsByBookId[id]?.totalMs || 0) : 0), [readingStatsByBookId, id]);
 
   const bookmarks = useMemo(() => {
     if (!id) return [];
@@ -83,6 +94,17 @@ export default function Reader() {
       }
     };
   }, [toast]);
+
+  useEffect(() => {
+    if (!id) return;
+    restoreAppliedRef.current = null;
+    const pos = useStore.getState().readingPositionByBookId[id];
+    if (!pos) return;
+    const key = `${pos.chapterId}:${pos.paragraphIndex}`;
+    if (restoreAppliedRef.current === key) return;
+    restoreAppliedRef.current = key;
+    navigate(`/read/${id}/${pos.chapterId}?p=${pos.paragraphIndex}`, { replace: true });
+  }, [id, navigate]);
 
   useEffect(() => {
     if (!chapterId || paragraphParam == null) return;
@@ -159,6 +181,66 @@ export default function Reader() {
     }
     window.scrollTo(0, 0);
   }, [chapter, book, id, isInBookshelf, updateReadProgress, addReadingHistory]);
+
+  useEffect(() => {
+    if (!id) return;
+    sessionStartRef.current = Date.now();
+    sessionAccumulatedRef.current = 0;
+    setSessionMs(0);
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    const settle = () => {
+      if (sessionStartRef.current == null) return;
+      const now = Date.now();
+      const delta = now - sessionStartRef.current;
+      if (delta <= 0) return;
+      sessionAccumulatedRef.current += delta;
+      setSessionMs(sessionAccumulatedRef.current);
+      addReadingTime(id, delta);
+      sessionStartRef.current = now;
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        settle();
+        sessionStartRef.current = null;
+      } else {
+        sessionStartRef.current = Date.now();
+      }
+    };
+
+    window.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('visibilitychange', onVisibility);
+      settle();
+    };
+  }, [id, addReadingTime]);
+
+  useEffect(() => {
+    if (!id || !chapterId) return;
+    if (!chapter) return;
+    const idx = Math.max(0, Math.min(activeParagraphIndex, chapter.content.length - 1));
+    latestPositionRef.current = { bookId: id, chapterId, paragraphIndex: idx };
+    if (saveTimerRef.current != null) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => {
+      const cur = latestPositionRef.current;
+      if (!cur) return;
+      setReadingPosition(cur.bookId, cur.chapterId, cur.paragraphIndex);
+    }, 1500);
+    return () => {
+      if (saveTimerRef.current != null) window.clearTimeout(saveTimerRef.current);
+    };
+  }, [id, chapterId, chapter, activeParagraphIndex, setReadingPosition]);
+
+  useEffect(() => {
+    return () => {
+      const cur = latestPositionRef.current;
+      if (!cur) return;
+      setReadingPosition(cur.bookId, cur.chapterId, cur.paragraphIndex);
+    };
+  }, [setReadingPosition]);
 
   useEffect(() => {
     if (showToc && chapterId) {
@@ -308,6 +390,21 @@ export default function Reader() {
     green: 'bg-emerald-200/50',
   };
 
+  const formatDuration = (ms: number) => {
+    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    return `${m}:${String(s).padStart(2, '0')}`;
+  };
+
+  const chapterProgressRatio = (() => {
+    const len = chapter?.content.length || 0;
+    if (len <= 0) return 0;
+    return Math.max(0, Math.min(1, (activeParagraphIndex + 1) / len));
+  })();
+
   // 根据翻页模式设置不同的容器样式
   const getContainerStyle = () => {
     if (readerSettings.turnMode === 'scroll' || !readerSettings.turnMode) {
@@ -332,6 +429,30 @@ export default function Reader() {
           </div>
         </div>
       )}
+      <div className="fixed left-0 right-0 bottom-0 z-40 pointer-events-none">
+        <div className="px-4 pb-safe pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+          <div
+            ref={progressBarRef}
+            className="w-full h-2 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden"
+            onClick={(e) => {
+              if (!id || !chapterId || !chapter) return;
+              const el = progressBarRef.current;
+              if (!el) return;
+              const rect = el.getBoundingClientRect();
+              const x = e.clientX - rect.left;
+              const ratio = rect.width <= 0 ? 0 : Math.max(0, Math.min(1, x / rect.width));
+              const targetIdx = Math.max(0, Math.min(chapter.content.length - 1, Math.round((chapter.content.length - 1) * ratio)));
+              setPendingScrollTarget({ chapterId, paragraphIndex: targetIdx });
+            }}
+          >
+            <div className="h-full bg-blue-500/70 dark:bg-blue-400/70" style={{ width: `${chapterProgressRatio * 100}%` }} />
+          </div>
+          <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 flex justify-between">
+            <span>{Math.round(chapterProgressRatio * 100)}%</span>
+            <span>{activeParagraphIndex + 1}/{chapter?.content.length || 0}</span>
+          </div>
+        </div>
+      </div>
       {/* Content */}
       <div 
         className={getContainerStyle()}
@@ -425,6 +546,11 @@ export default function Reader() {
               <ArrowLeft size={24} className="text-slate-800 dark:text-slate-200" />
             </button>
             <span className="ml-4 font-medium text-slate-800 dark:text-slate-200 line-clamp-1">{book.title}</span>
+            <div className="ml-auto text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
+              <span>本次 {formatDuration(sessionMs)}</span>
+              <span className="mx-2">·</span>
+              <span>累计 {formatDuration(totalReadingMs)}</span>
+            </div>
           </div>
 
           {/* Footer */}

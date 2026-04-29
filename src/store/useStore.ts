@@ -29,6 +29,19 @@ export interface ReaderBookmark {
   createdAt: number;
 }
 
+export interface ReadingPosition {
+  bookId: string;
+  chapterId: string;
+  paragraphIndex: number;
+  updatedAt: number;
+}
+
+export interface ReadingStats {
+  bookId: string;
+  totalMs: number;
+  updatedAt: number;
+}
+
 interface ReaderSettings {
   theme: 'day' | 'night' | 'sepia' | 'green';
   fontSize: number;
@@ -48,6 +61,8 @@ interface StoreState {
   bookshelf: BookshelfItem[];
   readingHistory: HistoryItem[];
   bookmarksByBookId: Record<string, ReaderBookmark[]>;
+  readingPositionByBookId: Record<string, ReadingPosition>;
+  readingStatsByBookId: Record<string, ReadingStats>;
   readerSettings: ReaderSettings;
   login: (email: string, password: string) => Promise<void>;
   register: (username: string, email: string, password: string) => Promise<void>;
@@ -62,6 +77,8 @@ interface StoreState {
   updateReaderSettings: (settings: Partial<ReaderSettings>) => void;
   toggleBookmark: (bookId: string, chapterId: string, paragraphIndex: number, excerpt: string) => void;
   removeBookmark: (bookId: string, bookmarkId: string) => void;
+  setReadingPosition: (bookId: string, chapterId: string, paragraphIndex: number) => void;
+  addReadingTime: (bookId: string, deltaMs: number) => void;
 }
 
 export const useStore = create<StoreState>()(
@@ -71,6 +88,8 @@ export const useStore = create<StoreState>()(
       bookshelf: [],
       readingHistory: [],
       bookmarksByBookId: {},
+      readingPositionByBookId: {},
+      readingStatsByBookId: {},
       readerSettings: {
         theme: 'day',
         fontSize: 18,
@@ -206,6 +225,33 @@ export const useStore = create<StoreState>()(
             bookmarksByBookId: {
               ...state.bookmarksByBookId,
               [bookId]: current.filter((b) => b.id !== bookmarkId),
+            },
+          };
+        }),
+      setReadingPosition: (bookId, chapterId, paragraphIndex) =>
+        set((state) => ({
+          readingPositionByBookId: {
+            ...state.readingPositionByBookId,
+            [bookId]: {
+              bookId,
+              chapterId,
+              paragraphIndex,
+              updatedAt: Date.now(),
+            },
+          },
+        })),
+      addReadingTime: (bookId, deltaMs) =>
+        set((state) => {
+          const current = state.readingStatsByBookId[bookId];
+          const totalMs = Math.max(0, (current?.totalMs || 0) + Math.max(0, deltaMs));
+          return {
+            readingStatsByBookId: {
+              ...state.readingStatsByBookId,
+              [bookId]: {
+                bookId,
+                totalMs,
+                updatedAt: Date.now(),
+              },
             },
           };
         }),
