@@ -3,10 +3,11 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { getBookById, getChaptersByBookId, Book, Chapter } from '../mock/data';
 import { getLocalChapters } from '../utils/localBook';
+import { getCachedChapters, setCachedChapters } from '../utils/chapterCache';
 import { exportBookToHtml } from '../utils/exportHtml';
 import { 
   Settings, List, ChevronLeft, ChevronRight, 
-  ArrowLeft, Moon, Sun, Loader2, ArrowUpDown, Download, Bookmark, Trash2
+  ArrowLeft, Moon, Sun, Loader2, ArrowUpDown, Download, Bookmark, Trash2, Search, Zap, CircleDot, CloudDownload
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -25,6 +26,7 @@ export default function Reader() {
     bookmarksByBookId,
     toggleBookmark,
     removeBookmark,
+    readingPositionByBookId,
     setReadingPosition,
     readingStatsByBookId,
     addReadingTime
@@ -37,6 +39,9 @@ export default function Reader() {
   const [activeParagraphIndex, setActiveParagraphIndex] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [sessionMs, setSessionMs] = useState(0);
+  const [tocQuery, setTocQuery] = useState('');
+  const [isCaching, setIsCaching] = useState(false);
+  const [isCached, setIsCached] = useState(false);
 
   const [book, setBook] = useState<Book | null>(null);
   const [chapter, setChapter] = useState<Chapter | null>(null);
@@ -97,14 +102,73 @@ export default function Reader() {
 
   useEffect(() => {
     if (!id) return;
-    restoreAppliedRef.current = null;
-    const pos = useStore.getState().readingPositionByBookId[id];
+    const pos = readingPositionByBookId[id];
     if (!pos) return;
     const key = `${pos.chapterId}:${pos.paragraphIndex}`;
     if (restoreAppliedRef.current === key) return;
+    if (chapterId === pos.chapterId && paragraphParam === String(pos.paragraphIndex)) {
+      restoreAppliedRef.current = key;
+      return;
+    }
     restoreAppliedRef.current = key;
     navigate(`/read/${id}/${pos.chapterId}?p=${pos.paragraphIndex}`, { replace: true });
-  }, [id, navigate]);
+  }, [id, chapterId, paragraphParam, readingPositionByBookId, navigate]);
+
+  const readingPos = useMemo(() => {
+    if (!id) return undefined;
+    return readingPositionByBookId[id];
+  }, [readingPositionByBookId, id]);
+
+  const bookshelfItem = useMemo(() => {
+    if (!id) return undefined;
+    return bookshelf.find((b) => b.bookId === id);
+  }, [bookshelf, id]);
+
+  const lastReadChapterIndex = useMemo(() => {
+    const lastReadChapterId = bookshelfItem?.lastReadChapterId;
+    if (!lastReadChapterId) return -1;
+    return chapters.findIndex((c) => c.id === lastReadChapterId);
+  }, [bookshelfItem, chapters]);
+
+  const chapterIndexById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (let i = 0; i < chapters.length; i++) {
+      map.set(chapters[i].id, i);
+    }
+    return map;
+  }, [chapters]);
+
+  const latestChapter = useMemo(() => chapters[chapters.length - 1] || null, [chapters]);
+
+  const firstUnreadChapter = useMemo(() => {
+    if (chapters.length === 0) return null;
+    if (lastReadChapterIndex < 0) return chapters[0];
+    const idx = lastReadChapterIndex + 1;
+    return idx >= 0 && idx < chapters.length ? chapters[idx] : null;
+  }, [chapters, lastReadChapterIndex]);
+
+  const tocChapters = useMemo(() => {
+    const list = tocAscending ? chapters : [...chapters].reverse();
+    const q = tocQuery.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((c) => c.title.toLowerCase().includes(q));
+  }, [chapters, tocAscending, tocQuery]);
+
+  const handleCacheChapters = async () => {
+    if (!id) return;
+    if (id.startsWith('local_')) return;
+    if (chapters.length === 0) return;
+    try {
+      setIsCaching(true);
+      await setCachedChapters(id, chapters);
+      setIsCached(true);
+      setToast(`已缓存 ${chapters.length} 章`);
+    } catch {
+      setToast('缓存失败');
+    } finally {
+      setIsCaching(false);
+    }
+  };
 
   useEffect(() => {
     if (!chapterId || paragraphParam == null) return;
@@ -150,7 +214,7 @@ export default function Reader() {
           loadedChapters = await getLocalChapters(id);
         } else {
           loadedBook = getBookById(id!) || null;
-          loadedChapters = getChaptersByBookId(id!);
+          loadedChapters = (await getCachedChapters(id!)) || getChaptersByBookId(id!);
         }
         
         setBook(loadedBook);
@@ -164,6 +228,13 @@ export default function Reader() {
     };
     loadData();
   }, [id, chapterId]);
+
+  useEffect(() => {
+    if (!showToc) return;
+    if (!id) return;
+    if (id.startsWith('local_')) return;
+    getCachedChapters(id).then((c) => setIsCached(Boolean(c && c.length > 0))).catch(() => setIsCached(false));
+  }, [showToc, id]);
 
   useEffect(() => {
     if (chapter && book) {
@@ -761,39 +832,150 @@ export default function Reader() {
                 className="absolute top-0 left-0 bottom-0 w-80 max-w-[80vw] bg-white dark:bg-slate-900 shadow-2xl pointer-events-auto flex flex-col transform transition-transform"
                 onClick={e => e.stopPropagation()}
               >
-                <div className="p-5 border-b dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex justify-between items-center">
-                  <div>
-                    <h3 className="font-bold text-lg text-slate-800 dark:text-slate-200">{book.title}</h3>
-                    <p className="text-sm text-slate-500 mt-1">共 {chapters.length} 章</p>
+                <div className="p-5 border-b dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
+                  <div className="flex justify-between items-center">
+                    <div className="min-w-0">
+                      <h3 className="font-bold text-lg text-slate-800 dark:text-slate-200 line-clamp-1">{book.title}</h3>
+                      <p className="text-sm text-slate-500 mt-1">共 {chapters.length} 章</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {!id?.startsWith('local_') && (
+                        <button
+                          onClick={handleCacheChapters}
+                          disabled={isCaching}
+                          className={clsx(
+                            'px-3 py-2 rounded-full text-xs transition-colors',
+                            isCached ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200',
+                            isCaching ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-300 dark:hover:bg-slate-600'
+                          )}
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            <CloudDownload size={14} />
+                            {isCaching ? '缓存中' : isCached ? '已缓存' : '缓存'}
+                          </span>
+                        </button>
+                      )}
+                      <button 
+                        onClick={() => setTocAscending(!tocAscending)}
+                        className="p-2 text-slate-500 hover:text-blue-500 transition-colors rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex flex-col items-center"
+                      >
+                        <ArrowUpDown size={18} />
+                        <span className="text-[10px] mt-1">{tocAscending ? '正序' : '逆序'}</span>
+                      </button>
+                    </div>
                   </div>
-                  <button 
-                    onClick={() => setTocAscending(!tocAscending)}
-                    className="p-2 text-slate-500 hover:text-blue-500 transition-colors rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex flex-col items-center"
-                  >
-                    <ArrowUpDown size={18} />
-                    <span className="text-[10px] mt-1">{tocAscending ? '正序' : '逆序'}</span>
-                  </button>
-                </div>
-                <div className="flex-1 overflow-y-auto overscroll-contain">
-                  {(tocAscending ? chapters : [...chapters].reverse()).map(c => (
+                  <div className="mt-4 flex items-center gap-2">
+                    <div className="flex-1 relative">
+                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        value={tocQuery}
+                        onChange={(e) => setTocQuery(e.target.value)}
+                        placeholder="搜索章节..."
+                        className="w-full pl-9 pr-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm outline-none focus:ring-2 focus:ring-blue-500/30"
+                      />
+                    </div>
                     <button
-                      key={c.id}
-                      id={`toc-item-${c.id}`}
+                      disabled={!latestChapter}
                       onClick={() => {
-                        navigate(`/read/${id}/${c.id}`, { replace: true });
+                        if (!latestChapter || !id) return;
+                        navigate(`/read/${id}/${latestChapter.id}`, { replace: true });
                         setShowToc(false);
                         setShowControls(false);
                       }}
-                      className={clsx(
-                        'w-full text-left px-5 py-4 text-sm border-b dark:border-slate-800/50 transition-colors',
-                        c.id === chapterId 
-                          ? 'text-red-600 dark:text-red-500 font-bold bg-red-50 dark:bg-red-900/20' 
-                          : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
-                      )}
+                      className="px-3 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors disabled:opacity-50"
                     >
-                      {c.title}
+                      <span className="inline-flex items-center gap-1">
+                        <Zap size={14} />
+                        最新
+                      </span>
                     </button>
-                  ))}
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      disabled={!readingPos}
+                      onClick={() => {
+                        if (!readingPos || !id) return;
+                        navigate(`/read/${id}/${readingPos.chapterId}?p=${readingPos.paragraphIndex}`, { replace: true });
+                        setShowToc(false);
+                        setShowControls(false);
+                      }}
+                      className="flex-1 px-3 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors disabled:opacity-50"
+                    >
+                      <span className="inline-flex items-center gap-1 justify-center w-full">
+                        <CircleDot size={14} />
+                        读到
+                      </span>
+                    </button>
+                    <button
+                      disabled={!firstUnreadChapter && !latestChapter}
+                      onClick={() => {
+                        if (!id) return;
+                        const target = firstUnreadChapter || latestChapter;
+                        if (!target) return;
+                        navigate(`/read/${id}/${target.id}`, { replace: true });
+                        setShowToc(false);
+                        setShowControls(false);
+                      }}
+                      className="flex-1 px-3 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors disabled:opacity-50"
+                    >
+                      未读
+                    </button>
+                  </div>
+                </div>
+                <div className="flex-1 overflow-y-auto overscroll-contain">
+                  {tocChapters.map((c) => {
+                    const idx = chapterIndexById.get(c.id) ?? -1;
+                    const readState =
+                      lastReadChapterIndex >= 0 && idx >= 0
+                        ? idx < lastReadChapterIndex
+                          ? '已读'
+                          : idx > lastReadChapterIndex
+                            ? '未读'
+                            : ''
+                        : '';
+                    const isReadingPos = Boolean(readingPos && readingPos.chapterId === c.id);
+                    const readingPosText = isReadingPos ? `p${(readingPos?.paragraphIndex || 0) + 1}/${c.content.length}` : '';
+                    return (
+                      <button
+                        key={c.id}
+                        id={`toc-item-${c.id}`}
+                        onClick={() => {
+                          navigate(`/read/${id}/${c.id}`, { replace: true });
+                          setShowToc(false);
+                          setShowControls(false);
+                        }}
+                        className={clsx(
+                          'w-full text-left px-5 py-4 text-sm border-b dark:border-slate-800/50 transition-colors',
+                          c.id === chapterId 
+                            ? 'text-red-600 dark:text-red-500 font-bold bg-red-50 dark:bg-red-900/20' 
+                            : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="flex-1 line-clamp-1">{c.title}</span>
+                          <div className="shrink-0 flex items-center gap-2">
+                            {readingPosText && (
+                              <span className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 px-2 py-1 rounded-full">
+                                {readingPosText}
+                              </span>
+                            )}
+                            {readState && (
+                              <span
+                                className={clsx(
+                                  'text-[10px] px-2 py-1 rounded-full',
+                                  readState === '已读'
+                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                                    : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                                )}
+                              >
+                                {readState}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </>
