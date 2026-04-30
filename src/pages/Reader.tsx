@@ -802,30 +802,32 @@ export default function Reader() {
           </div>
         </div>
       )}
-      <div className="fixed left-0 right-0 bottom-0 z-40 pointer-events-none">
-        <div className="px-4 pb-safe pointer-events-auto" onClick={(e) => e.stopPropagation()}>
-          <div
-            ref={progressBarRef}
-            className="w-full h-2 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden"
-            onClick={(e) => {
-              if (!id || !chapterId || !chapter) return;
-              const el = progressBarRef.current;
-              if (!el) return;
-              const rect = el.getBoundingClientRect();
-              const x = e.clientX - rect.left;
-              const ratio = rect.width <= 0 ? 0 : Math.max(0, Math.min(1, x / rect.width));
-              const targetIdx = Math.max(0, Math.min(chapter.content.length - 1, Math.round((chapter.content.length - 1) * ratio)));
-              setPendingScrollTarget({ chapterId, paragraphIndex: targetIdx });
-            }}
-          >
-            <div className="h-full bg-blue-500/70 dark:bg-blue-400/70" style={{ width: `${chapterProgressRatio * 100}%` }} />
-          </div>
-          <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 flex justify-between">
-            <span>{Math.round(chapterProgressRatio * 100)}%</span>
-            <span>{activeParagraphIndex + 1}/{chapter?.content.length || 0}</span>
+      {!showControls && (
+        <div className="fixed left-0 right-0 bottom-0 z-40 pointer-events-none">
+          <div className="px-4 pb-safe pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+            <div
+              ref={progressBarRef}
+              className="w-full h-2 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden"
+              onClick={(e) => {
+                if (!id || !chapterId || !chapter) return;
+                const el = progressBarRef.current;
+                if (!el) return;
+                const rect = el.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const ratio = rect.width <= 0 ? 0 : Math.max(0, Math.min(1, x / rect.width));
+                const targetIdx = Math.max(0, Math.min(chapter.content.length - 1, Math.round((chapter.content.length - 1) * ratio)));
+                setPendingScrollTarget({ chapterId, paragraphIndex: targetIdx });
+              }}
+            >
+              <div className="h-full bg-blue-500/70 dark:bg-blue-400/70" style={{ width: `${chapterProgressRatio * 100}%` }} />
+            </div>
+            <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 flex justify-between">
+              <span>{Math.round(chapterProgressRatio * 100)}%</span>
+              <span>{activeParagraphIndex + 1}/{chapter?.content.length || 0}</span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
       {/* Content */}
       <div 
         className={getContainerStyle()}
@@ -1026,7 +1028,7 @@ export default function Reader() {
           {/* Settings Panel */}
           {showSettings && (
             <div 
-              className="absolute bottom-24 left-4 right-4 md:left-auto md:right-4 md:w-96 bg-white/95 dark:bg-slate-800/95 backdrop-blur rounded-2xl shadow-xl p-6 pointer-events-auto border border-slate-200 dark:border-slate-700"
+              className="absolute bottom-24 left-4 right-4 md:left-auto md:right-4 md:w-96 bg-white/95 dark:bg-slate-800/95 backdrop-blur rounded-2xl shadow-xl p-4 sm:p-6 pointer-events-auto border border-slate-200 dark:border-slate-700 max-h-[calc(100dvh-9rem)] overflow-y-auto pb-safe"
               onClick={e => e.stopPropagation()}
             >
               <div className="space-y-6">
