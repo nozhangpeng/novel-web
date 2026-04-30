@@ -72,7 +72,7 @@ export default function Reader() {
   const [pendingScrollTarget, setPendingScrollTarget] = useState<{ chapterId: string; paragraphIndex: number } | null>(null);
   const latestPositionRef = useRef<{ bookId: string; chapterId: string; paragraphIndex: number } | null>(null);
   const saveTimerRef = useRef<number | null>(null);
-  const restoreAppliedRef = useRef<string | null>(null);
+  const restoredBookRef = useRef<string | null>(null);
   const sessionStartRef = useRef<number | null>(null);
   const sessionAccumulatedRef = useRef(0);
   const totalReadingMs = useMemo(() => (id ? (readingStatsByBookId[id]?.totalMs || 0) : 0), [readingStatsByBookId, id]);
@@ -141,17 +141,16 @@ export default function Reader() {
 
   useEffect(() => {
     if (!id) return;
+    if (restoredBookRef.current === id) return;
+    restoredBookRef.current = id;
     const pos = readingPositionByBookId[id];
     if (!pos) return;
-    const key = `${pos.chapterId}:${pos.paragraphIndex}`;
-    if (restoreAppliedRef.current === key) return;
-    if (chapterId === pos.chapterId && paragraphParam === String(pos.paragraphIndex)) {
-      restoreAppliedRef.current = key;
+    if (chapterId !== pos.chapterId) {
+      navigate(`/read/${id}/${pos.chapterId}?p=${pos.paragraphIndex}`, { replace: true });
       return;
     }
-    restoreAppliedRef.current = key;
-    navigate(`/read/${id}/${pos.chapterId}?p=${pos.paragraphIndex}`, { replace: true });
-  }, [id, chapterId, paragraphParam, readingPositionByBookId, navigate]);
+    setPendingScrollTarget({ chapterId: pos.chapterId, paragraphIndex: pos.paragraphIndex });
+  }, [id, chapterId, readingPositionByBookId, navigate]);
 
   const readingPos = useMemo(() => {
     if (!id) return undefined;
