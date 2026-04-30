@@ -7,7 +7,7 @@ import { getCachedChapters, setCachedChapters } from '../utils/chapterCache';
 import { exportBookToHtml } from '../utils/exportHtml';
 import { 
   Settings, List, ChevronLeft, ChevronRight, 
-  ArrowLeft, Moon, Sun, Loader2, ArrowUpDown, Download, Bookmark, Trash2, Search, Zap, CircleDot, CloudDownload
+  ArrowLeft, Moon, Sun, Loader2, ArrowUpDown, Download, Bookmark, Trash2, Search, Zap, CircleDot, CloudDownload, BookMarked
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -29,7 +29,10 @@ export default function Reader() {
     readingPositionByBookId,
     setReadingPosition,
     readingStatsByBookId,
-    addReadingTime
+    addReadingTime,
+    highlightsByBookId,
+    addHighlight,
+    removeHighlight
   } = useStore();
   const [showControls, setShowControls] = useState(false);
   const [showToc, setShowToc] = useState(false);
@@ -42,6 +45,17 @@ export default function Reader() {
   const [tocQuery, setTocQuery] = useState('');
   const [isCaching, setIsCaching] = useState(false);
   const [isCached, setIsCached] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
+  const [selectionMenu, setSelectionMenu] = useState<{
+    paragraphIndex: number;
+    chapterId: string;
+    startOffset: number;
+    endOffset: number;
+    text: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [noteEditor, setNoteEditor] = useState<{ open: boolean; draft: string }>(() => ({ open: false, draft: '' }));
 
   const [book, setBook] = useState<Book | null>(null);
   const [chapter, setChapter] = useState<Chapter | null>(null);
@@ -67,6 +81,31 @@ export default function Reader() {
     if (!id) return [];
     return bookmarksByBookId[id] || [];
   }, [bookmarksByBookId, id]);
+
+  const highlights = useMemo(() => {
+    if (!id) return [];
+    return highlightsByBookId[id] || [];
+  }, [highlightsByBookId, id]);
+
+  const chapterHighlightsByParagraph = useMemo(() => {
+    const map = new Map<number, typeof highlights>();
+    if (!chapterId) return map;
+    for (const h of highlights) {
+      if (h.chapterId !== chapterId) continue;
+      const list = map.get(h.paragraphIndex) || [];
+      list.push(h);
+      map.set(h.paragraphIndex, list);
+    }
+    for (const [k, v] of map) {
+      v.sort((a, b) => a.startOffset - b.startOffset);
+      map.set(k, v);
+    }
+    return map;
+  }, [highlights, chapterId]);
+
+  const notes = useMemo(() => {
+    return [...highlights].sort((a, b) => b.createdAt - a.createdAt);
+  }, [highlights]);
 
   const bookmarkedParagraphsInChapter = useMemo(() => {
     if (!chapterId) return new Set<number>();
@@ -422,7 +461,12 @@ export default function Reader() {
   };
 
   const handleScreenClick = (e: React.MouseEvent) => {
-    // 只有点击阅读器主内容区域才触发手势，如果是点击了菜单等不处理
+    const selectionText = window.getSelection()?.toString();
+    if (selectionMenu || (selectionText && selectionText.trim().length > 0)) {
+      setSelectionMenu(null);
+      return;
+    }
+
     const { clientX } = e;
     const width = window.innerWidth;
     const ratio = clientX / width;
@@ -432,6 +476,8 @@ export default function Reader() {
       setShowControls(false);
       setShowSettings(false);
       setShowToc(false);
+      setShowBookmarks(false);
+      setShowNotes(false);
       return;
     }
 
@@ -461,6 +507,37 @@ export default function Reader() {
     green: 'bg-emerald-200/50',
   };
 
+  const textHighlightStyles = {
+    day: 'bg-yellow-200/70',
+    night: 'bg-yellow-400/25',
+    sepia: 'bg-yellow-300/50',
+    green: 'bg-yellow-200/60',
+  };
+
+  const contentWidthClass = {
+    narrow: 'max-w-2xl',
+    medium: 'max-w-3xl',
+    wide: 'max-w-5xl',
+  };
+
+  const pagePaddingClass = {
+    sm: 'px-4',
+    md: 'px-6',
+    lg: 'px-8',
+  };
+
+  const paragraphSpacingClass = {
+    sm: 'mb-4',
+    md: 'mb-6',
+    lg: 'mb-8',
+  };
+
+  const contrastFilter = {
+    low: 'contrast(0.95)',
+    normal: 'contrast(1)',
+    high: 'contrast(1.15)',
+  };
+
   const formatDuration = (ms: number) => {
     const totalSeconds = Math.max(0, Math.floor(ms / 1000));
     const h = Math.floor(totalSeconds / 3600);
@@ -476,19 +553,134 @@ export default function Reader() {
     return Math.max(0, Math.min(1, (activeParagraphIndex + 1) / len));
   })();
 
+  const clearNativeSelection = () => {
+    const sel = window.getSelection();
+    if (sel) sel.removeAllRanges();
+  };
+
+  const findParagraphElement = (node: Node | null) => {
+    if (!node) return null;
+    const el = node instanceof HTMLElement ? node : node.parentElement;
+    return el ? (el.closest('[data-paragraph="true"]') as HTMLElement | null) : null;
+  };
+
+  const getOffsetInParagraph = (paragraphEl: HTMLElement, container: Node, offset: number) => {
+    const walker = document.createTreeWalker(paragraphEl, NodeFilter.SHOW_TEXT);
+    let current: Node | null = walker.nextNode();
+    let sum = 0;
+    while (current) {
+      if (current === container) return sum + offset;
+      sum += (current.textContent || '').length;
+      current = walker.nextNode();
+    }
+    return sum;
+  };
+
+  const extractSelectionInParagraph = () => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return null;
+    const text = sel.toString();
+    if (!text || text.trim().length === 0) return null;
+    const range = sel.getRangeAt(0);
+    const startParagraph = findParagraphElement(range.startContainer);
+    const endParagraph = findParagraphElement(range.endContainer);
+    if (!startParagraph || !endParagraph) return null;
+    if (startParagraph !== endParagraph) return { error: '仅支持段落内选中' as const };
+    const idxStr = startParagraph.dataset.paragraphIndex;
+    const cid = startParagraph.dataset.chapterId;
+    if (!idxStr || !cid) return null;
+    const paragraphIndex = Number(idxStr);
+    if (!Number.isFinite(paragraphIndex)) return null;
+    const startOffset = getOffsetInParagraph(startParagraph, range.startContainer, range.startOffset);
+    const endOffset = getOffsetInParagraph(endParagraph, range.endContainer, range.endOffset);
+    const [a, b] = startOffset <= endOffset ? [startOffset, endOffset] : [endOffset, startOffset];
+    const rect = range.getBoundingClientRect();
+    return { paragraphIndex, chapterId: cid, startOffset: a, endOffset: b, text: text.trim(), rect };
+  };
+
+  const showSelectionActions = () => {
+    const res = extractSelectionInParagraph();
+    if (!res) return;
+    if ('error' in res) {
+      setToast(res.error);
+      clearNativeSelection();
+      setSelectionMenu(null);
+      return;
+    }
+    const { rect, ...rest } = res;
+    const x = Math.max(12, Math.min(window.innerWidth - 12, rect.left + rect.width / 2));
+    const y = Math.max(12, rect.top - 12);
+    setSelectionMenu({ ...rest, x, y });
+  };
+
+  const mergeRanges = (ranges: Array<{ startOffset: number; endOffset: number }>) => {
+    const sorted = [...ranges].sort((a, b) => a.startOffset - b.startOffset);
+    const merged: Array<{ startOffset: number; endOffset: number }> = [];
+    for (const r of sorted) {
+      if (merged.length === 0) {
+        merged.push({ ...r });
+        continue;
+      }
+      const last = merged[merged.length - 1];
+      if (r.startOffset <= last.endOffset) {
+        last.endOffset = Math.max(last.endOffset, r.endOffset);
+      } else {
+        merged.push({ ...r });
+      }
+    }
+    return merged;
+  };
+
+  const renderTextWithHighlights = (text: string, ranges: Array<{ startOffset: number; endOffset: number }>) => {
+    const len = text.length;
+    const merged = mergeRanges(
+      ranges
+        .map((r) => ({
+          startOffset: Math.max(0, Math.min(len, r.startOffset)),
+          endOffset: Math.max(0, Math.min(len, r.endOffset)),
+        }))
+        .filter((r) => r.endOffset > r.startOffset)
+    );
+    if (merged.length === 0) return text;
+    const out: Array<string | JSX.Element> = [];
+    let cursor = 0;
+    for (let i = 0; i < merged.length; i++) {
+      const r = merged[i];
+      if (r.startOffset > cursor) out.push(text.slice(cursor, r.startOffset));
+      const inner = text.slice(r.startOffset, r.endOffset);
+      out.push(
+        <mark key={`${r.startOffset}-${r.endOffset}-${i}`} className={clsx('rounded px-0.5', textHighlightStyles[readerSettings.theme])}>
+          {inner}
+        </mark>
+      );
+      cursor = r.endOffset;
+    }
+    if (cursor < len) out.push(text.slice(cursor));
+    return out;
+  };
+
   // 根据翻页模式设置不同的容器样式
   const getContainerStyle = () => {
     if (readerSettings.turnMode === 'scroll' || !readerSettings.turnMode) {
-      return "max-w-3xl mx-auto px-6 py-12 pb-32 min-h-screen flex flex-col cursor-pointer";
+      return clsx(
+        contentWidthClass[readerSettings.contentWidth],
+        'mx-auto',
+        pagePaddingClass[readerSettings.pagePadding],
+        'py-12 pb-32 min-h-screen flex flex-col cursor-pointer'
+      );
     }
     // 非上下翻页模式（如平移、覆盖、仿真等）时，使用横向滚动容器
-    return "w-full mx-auto px-6 py-12 h-[100dvh] flex flex-col cursor-pointer relative";
+    return clsx(
+      'w-full mx-auto h-[100dvh] flex flex-col cursor-pointer relative',
+      pagePaddingClass[readerSettings.pagePadding],
+      'py-12'
+    );
   };
 
   return (
     <div 
       className={clsx(
-        'min-h-screen relative overflow-x-hidden select-none',
+        'min-h-screen relative overflow-x-hidden',
         themeStyles[readerSettings.theme]
       )}
       onClick={handleScreenClick}
@@ -497,6 +689,117 @@ export default function Reader() {
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] pointer-events-none">
           <div className="px-4 py-2 rounded-full bg-black/70 text-white text-sm backdrop-blur">
             {toast}
+          </div>
+        </div>
+      )}
+      {selectionMenu && (
+        <div
+          className="fixed z-[70] pointer-events-auto"
+          style={{ left: selectionMenu.x, top: selectionMenu.y, transform: 'translate(-50%, -100%)' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center gap-2 bg-white/95 dark:bg-slate-900/95 backdrop-blur border border-slate-200 dark:border-slate-700 shadow-lg rounded-full px-3 py-2">
+            <button
+              className="text-xs px-2 py-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(selectionMenu.text);
+                  setToast('已复制');
+                } catch {
+                  setToast('复制失败');
+                } finally {
+                  clearNativeSelection();
+                  setSelectionMenu(null);
+                }
+              }}
+            >
+              复制
+            </button>
+            <button
+              className="text-xs px-2 py-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              onClick={() => {
+                if (!id) return;
+                addHighlight({
+                  bookId: id,
+                  chapterId: selectionMenu.chapterId,
+                  paragraphIndex: selectionMenu.paragraphIndex,
+                  startOffset: selectionMenu.startOffset,
+                  endOffset: selectionMenu.endOffset,
+                  text: selectionMenu.text,
+                  color: 'yellow',
+                });
+                setToast('已高亮');
+                clearNativeSelection();
+                setSelectionMenu(null);
+              }}
+            >
+              高亮
+            </button>
+            <button
+              className="text-xs px-2 py-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              onClick={() => {
+                setNoteEditor({ open: true, draft: '' });
+              }}
+            >
+              笔记
+            </button>
+            <button
+              className="text-xs px-2 py-1 rounded-full text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              onClick={() => {
+                clearNativeSelection();
+                setSelectionMenu(null);
+              }}
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      )}
+      {noteEditor.open && (
+        <div className="fixed inset-0 z-[80] pointer-events-auto" onClick={() => { setNoteEditor({ open: false, draft: '' }); setSelectionMenu(null); }}>
+          <div className="absolute inset-0 bg-black/30" />
+          <div
+            className="absolute left-4 right-4 bottom-24 md:left-1/2 md:-translate-x-1/2 md:w-[32rem] bg-white/95 dark:bg-slate-900/95 backdrop-blur rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-sm font-medium text-slate-800 dark:text-slate-200 mb-2">写笔记</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 mb-3 line-clamp-2">{selectionMenu?.text}</div>
+            <textarea
+              value={noteEditor.draft}
+              onChange={(e) => setNoteEditor((s) => ({ ...s, draft: e.target.value }))}
+              className="w-full h-24 resize-none rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/30"
+              placeholder="写点什么..."
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                className="px-4 py-2 rounded-xl text-sm bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
+                onClick={() => { setNoteEditor({ open: false, draft: '' }); setSelectionMenu(null); }}
+              >
+                取消
+              </button>
+              <button
+                className="px-4 py-2 rounded-xl text-sm bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                onClick={() => {
+                  if (!id || !selectionMenu) return;
+                  addHighlight({
+                    bookId: id,
+                    chapterId: selectionMenu.chapterId,
+                    paragraphIndex: selectionMenu.paragraphIndex,
+                    startOffset: selectionMenu.startOffset,
+                    endOffset: selectionMenu.endOffset,
+                    text: selectionMenu.text,
+                    color: 'yellow',
+                    note: noteEditor.draft.trim() || undefined,
+                  });
+                  setToast('已保存笔记');
+                  clearNativeSelection();
+                  setNoteEditor({ open: false, draft: '' });
+                  setSelectionMenu(null);
+                }}
+              >
+                保存
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -528,10 +831,18 @@ export default function Reader() {
       <div 
         className={getContainerStyle()}
         ref={contentContainerRef}
+        onMouseUp={() => {
+          setTimeout(() => showSelectionActions(), 0);
+        }}
+        onTouchEnd={() => {
+          setTimeout(() => showSelectionActions(), 0);
+        }}
         style={{ 
           fontSize: `${readerSettings.fontSize}px`,
           lineHeight: readerSettings.lineHeight,
-          fontFamily: readerSettings.fontFamily === 'serif' ? 'serif' : 'sans-serif'
+          fontFamily: readerSettings.fontFamily === 'serif' ? 'serif' : 'sans-serif',
+          fontWeight: readerSettings.fontWeight,
+          filter: contrastFilter[readerSettings.contrast]
         }}
       >
         <h1 className="text-2xl font-bold mb-12 text-center shrink-0">{chapter.title}</h1>
@@ -547,11 +858,15 @@ export default function Reader() {
                 data-chapter-id={chapterId}
                 data-paragraph-index={idx}
                 className={clsx(
-                  'mb-6 indent-8 text-justify break-words leading-relaxed tracking-wide rounded-lg px-2 py-1 -mx-2',
+                  paragraphSpacingClass[readerSettings.paragraphSpacing],
+                  'indent-8 text-justify break-words leading-relaxed tracking-wide rounded-lg px-2 py-1 -mx-2',
                   bookmarkedParagraphsInChapter.has(idx) ? bookmarkHighlightStyles[readerSettings.theme] : ''
                 )}
               >
-                {p}
+                {renderTextWithHighlights(
+                  p,
+                  (chapterHighlightsByParagraph.get(idx) || []).map((h) => ({ startOffset: h.startOffset, endOffset: h.endOffset }))
+                )}
               </p>
             ))}
             <div className="flex justify-between items-center mt-16 pt-8 border-t border-current/10">
@@ -591,11 +906,15 @@ export default function Reader() {
                 data-chapter-id={chapterId}
                 data-paragraph-index={idx}
                 className={clsx(
-                  'mb-6 indent-8 text-justify break-words leading-relaxed tracking-wide snap-center max-w-[100vw] rounded-lg px-2 py-1 -mx-2',
+                  paragraphSpacingClass[readerSettings.paragraphSpacing],
+                  'indent-8 text-justify break-words leading-relaxed tracking-wide snap-center max-w-[100vw] rounded-lg px-2 py-1 -mx-2',
                   bookmarkedParagraphsInChapter.has(idx) ? bookmarkHighlightStyles[readerSettings.theme] : ''
                 )}
               >
-                {p}
+                {renderTextWithHighlights(
+                  p,
+                  (chapterHighlightsByParagraph.get(idx) || []).map((h) => ({ startOffset: h.startOffset, endOffset: h.endOffset }))
+                )}
               </p>
             ))}
           </div>
@@ -631,7 +950,7 @@ export default function Reader() {
           >
             <button 
               className="flex flex-col items-center p-3 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors w-16"
-              onClick={() => { setShowToc(!showToc); setShowSettings(false); setShowBookmarks(false); }}
+              onClick={() => { setShowToc(!showToc); setShowSettings(false); setShowBookmarks(false); setShowNotes(false); }}
             >
               <List size={22} />
               <span className="text-[11px] mt-1.5">目录</span>
@@ -658,6 +977,7 @@ export default function Reader() {
                 setShowBookmarks(!showBookmarks);
                 setShowToc(false);
                 setShowSettings(false);
+                setShowNotes(false);
               }}
               onPointerCancel={() => {
                 if (longPressTimerRef.current != null) window.clearTimeout(longPressTimerRef.current);
@@ -665,6 +985,18 @@ export default function Reader() {
             >
               <Bookmark size={22} />
               <span className="text-[11px] mt-1.5">书签</span>
+            </button>
+            <button 
+              className="flex flex-col items-center p-3 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors w-16"
+              onClick={() => {
+                setShowNotes(!showNotes);
+                setShowToc(false);
+                setShowBookmarks(false);
+                setShowSettings(false);
+              }}
+            >
+              <BookMarked size={22} />
+              <span className="text-[11px] mt-1.5">笔记</span>
             </button>
             <button 
               className="flex flex-col items-center p-3 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors w-16"
@@ -678,7 +1010,7 @@ export default function Reader() {
             </button>
             <button 
               className="flex flex-col items-center p-3 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors w-16"
-              onClick={() => { setShowSettings(!showSettings); setShowToc(false); setShowBookmarks(false); }}
+              onClick={() => { setShowSettings(!showSettings); setShowToc(false); setShowBookmarks(false); setShowNotes(false); }}
             >
               <Settings size={22} />
               <span className="text-[11px] mt-1.5">设置</span>
@@ -812,6 +1144,125 @@ export default function Reader() {
                         )}
                       >
                         <span style={{ fontFamily: f.id === 'serif' ? 'serif' : 'sans-serif' }}>{f.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300 w-10">加粗</span>
+                  <div className="flex flex-1 gap-3">
+                    {[
+                      { id: 'normal', name: '正常' },
+                      { id: 'bold', name: '加粗' },
+                    ].map(w => (
+                      <button
+                        key={w.id}
+                        onClick={() => updateReaderSettings({ fontWeight: w.id as 'normal' | 'bold' })}
+                        className={clsx(
+                          'flex-1 py-1.5 rounded-full text-sm font-medium border transition-colors',
+                          readerSettings.fontWeight === w.id 
+                            ? 'border-blue-500 text-blue-600 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-400' 
+                            : 'border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                        )}
+                      >
+                        {w.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300 w-10">对比</span>
+                  <div className="flex flex-1 gap-3">
+                    {[
+                      { id: 'low', name: '低' },
+                      { id: 'normal', name: '中' },
+                      { id: 'high', name: '高' },
+                    ].map(c => (
+                      <button
+                        key={c.id}
+                        onClick={() => updateReaderSettings({ contrast: c.id as 'low' | 'normal' | 'high' })}
+                        className={clsx(
+                          'flex-1 py-1.5 rounded-full text-sm font-medium border transition-colors',
+                          readerSettings.contrast === c.id 
+                            ? 'border-blue-500 text-blue-600 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-400' 
+                            : 'border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                        )}
+                      >
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300 w-10">宽度</span>
+                  <div className="flex flex-1 gap-3">
+                    {[
+                      { id: 'narrow', name: '窄' },
+                      { id: 'medium', name: '中' },
+                      { id: 'wide', name: '宽' },
+                    ].map(w => (
+                      <button
+                        key={w.id}
+                        onClick={() => updateReaderSettings({ contentWidth: w.id as 'narrow' | 'medium' | 'wide' })}
+                        className={clsx(
+                          'flex-1 py-1.5 rounded-full text-sm font-medium border transition-colors',
+                          readerSettings.contentWidth === w.id 
+                            ? 'border-blue-500 text-blue-600 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-400' 
+                            : 'border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                        )}
+                      >
+                        {w.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300 w-10">边距</span>
+                  <div className="flex flex-1 gap-3">
+                    {[
+                      { id: 'sm', name: '小' },
+                      { id: 'md', name: '中' },
+                      { id: 'lg', name: '大' },
+                    ].map(p => (
+                      <button
+                        key={p.id}
+                        onClick={() => updateReaderSettings({ pagePadding: p.id as 'sm' | 'md' | 'lg' })}
+                        className={clsx(
+                          'flex-1 py-1.5 rounded-full text-sm font-medium border transition-colors',
+                          readerSettings.pagePadding === p.id 
+                            ? 'border-blue-500 text-blue-600 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-400' 
+                            : 'border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                        )}
+                      >
+                        {p.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300 w-10">段距</span>
+                  <div className="flex flex-1 gap-3">
+                    {[
+                      { id: 'sm', name: '小' },
+                      { id: 'md', name: '中' },
+                      { id: 'lg', name: '大' },
+                    ].map(p => (
+                      <button
+                        key={p.id}
+                        onClick={() => updateReaderSettings({ paragraphSpacing: p.id as 'sm' | 'md' | 'lg' })}
+                        className={clsx(
+                          'flex-1 py-1.5 rounded-full text-sm font-medium border transition-colors',
+                          readerSettings.paragraphSpacing === p.id 
+                            ? 'border-blue-500 text-blue-600 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-400' 
+                            : 'border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                        )}
+                      >
+                        {p.name}
                       </button>
                     ))}
                   </div>
@@ -1027,6 +1478,70 @@ export default function Reader() {
                               if (!id) return;
                               removeBookmark(id, b.id);
                               setToast('已删除书签');
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
+          {showNotes && (
+            <>
+              <div 
+                className="absolute inset-0 bg-black/20 pointer-events-auto"
+                onClick={() => setShowNotes(false)}
+              />
+              <div 
+                className="absolute top-0 left-0 bottom-0 w-80 max-w-[80vw] bg-white dark:bg-slate-900 shadow-2xl pointer-events-auto flex flex-col transform transition-transform"
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="p-5 border-b dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
+                  <h3 className="font-bold text-lg text-slate-800 dark:text-slate-200">笔记</h3>
+                  <p className="text-sm text-slate-500 mt-1">共 {notes.length} 条</p>
+                </div>
+                <div className="flex-1 overflow-y-auto overscroll-contain">
+                  {notes.length === 0 ? (
+                    <div className="p-6 text-sm text-slate-500">选中文本后可添加高亮或笔记</div>
+                  ) : (
+                    notes.map((h) => (
+                      <div key={h.id} className="border-b dark:border-slate-800/50 px-5 py-4">
+                        <button
+                          className="w-full text-left"
+                          onClick={() => {
+                            if (!id) return;
+                            navigate(`/read/${id}/${h.chapterId}?p=${h.paragraphIndex}`, { replace: true });
+                            setShowNotes(false);
+                            setShowControls(false);
+                          }}
+                        >
+                          <div className="text-sm font-medium text-slate-800 dark:text-slate-200 line-clamp-1">
+                            {chapterTitleById.get(h.chapterId) || h.chapterId}
+                          </div>
+                          <div className={clsx('text-xs mt-1 line-clamp-2', textHighlightStyles[readerSettings.theme])}>
+                            {h.text}
+                          </div>
+                          {h.note && (
+                            <div className="text-xs text-slate-600 dark:text-slate-300 mt-2 whitespace-pre-wrap break-words">
+                              {h.note}
+                            </div>
+                          )}
+                          <div className="text-[11px] text-slate-400 mt-2">
+                            {new Date(h.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        </button>
+                        <div className="mt-3 flex justify-end">
+                          <button
+                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                            onClick={() => {
+                              if (!id) return;
+                              removeHighlight(id, h.id);
+                              setToast('已删除');
                             }}
                           >
                             <Trash2 className="w-4 h-4" />

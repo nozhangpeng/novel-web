@@ -42,12 +42,30 @@ export interface ReadingStats {
   updatedAt: number;
 }
 
+export interface TextHighlight {
+  id: string;
+  bookId: string;
+  chapterId: string;
+  paragraphIndex: number;
+  startOffset: number;
+  endOffset: number;
+  text: string;
+  color: 'yellow';
+  note?: string;
+  createdAt: number;
+}
+
 interface ReaderSettings {
   theme: 'day' | 'night' | 'sepia' | 'green';
   fontSize: number;
   fontFamily: string;
   lineHeight: number;
   turnMode: 'slide' | 'cover' | 'simulate' | 'scroll';
+  fontWeight: 'normal' | 'bold';
+  contrast: 'low' | 'normal' | 'high';
+  contentWidth: 'narrow' | 'medium' | 'wide';
+  pagePadding: 'sm' | 'md' | 'lg';
+  paragraphSpacing: 'sm' | 'md' | 'lg';
 }
 
 interface User {
@@ -63,6 +81,7 @@ interface StoreState {
   bookmarksByBookId: Record<string, ReaderBookmark[]>;
   readingPositionByBookId: Record<string, ReadingPosition>;
   readingStatsByBookId: Record<string, ReadingStats>;
+  highlightsByBookId: Record<string, TextHighlight[]>;
   readerSettings: ReaderSettings;
   login: (email: string, password: string) => Promise<void>;
   register: (username: string, email: string, password: string) => Promise<void>;
@@ -79,6 +98,9 @@ interface StoreState {
   removeBookmark: (bookId: string, bookmarkId: string) => void;
   setReadingPosition: (bookId: string, chapterId: string, paragraphIndex: number) => void;
   addReadingTime: (bookId: string, deltaMs: number) => void;
+  addHighlight: (highlight: Omit<TextHighlight, 'id' | 'createdAt'> & Partial<Pick<TextHighlight, 'id' | 'createdAt'>>) => void;
+  removeHighlight: (bookId: string, highlightId: string) => void;
+  updateHighlightNote: (bookId: string, highlightId: string, note: string) => void;
 }
 
 export const useStore = create<StoreState>()(
@@ -90,12 +112,18 @@ export const useStore = create<StoreState>()(
       bookmarksByBookId: {},
       readingPositionByBookId: {},
       readingStatsByBookId: {},
+      highlightsByBookId: {},
       readerSettings: {
         theme: 'day',
         fontSize: 18,
         fontFamily: 'sans',
         lineHeight: 1.8,
         turnMode: 'scroll',
+        fontWeight: 'normal',
+        contrast: 'normal',
+        contentWidth: 'medium',
+        pagePadding: 'md',
+        paragraphSpacing: 'md',
       },
       login: async (email, password) => {
         // Mock API call
@@ -252,6 +280,54 @@ export const useStore = create<StoreState>()(
                 totalMs,
                 updatedAt: Date.now(),
               },
+            },
+          };
+        }),
+      addHighlight: (highlight) =>
+        set((state) => {
+          const bookId = highlight.bookId;
+          const current = state.highlightsByBookId[bookId] || [];
+          const createdAt = highlight.createdAt ?? Date.now();
+          const id = highlight.id ?? `${highlight.chapterId}:${highlight.paragraphIndex}:${highlight.startOffset}-${highlight.endOffset}:${createdAt}`;
+          const next: TextHighlight[] = [
+            {
+              id,
+              bookId,
+              chapterId: highlight.chapterId,
+              paragraphIndex: highlight.paragraphIndex,
+              startOffset: highlight.startOffset,
+              endOffset: highlight.endOffset,
+              text: highlight.text,
+              color: 'yellow',
+              note: highlight.note,
+              createdAt,
+            },
+            ...current,
+          ];
+          return {
+            highlightsByBookId: {
+              ...state.highlightsByBookId,
+              [bookId]: next,
+            },
+          };
+        }),
+      removeHighlight: (bookId, highlightId) =>
+        set((state) => {
+          const current = state.highlightsByBookId[bookId] || [];
+          return {
+            highlightsByBookId: {
+              ...state.highlightsByBookId,
+              [bookId]: current.filter((h) => h.id !== highlightId),
+            },
+          };
+        }),
+      updateHighlightNote: (bookId, highlightId, note) =>
+        set((state) => {
+          const current = state.highlightsByBookId[bookId] || [];
+          return {
+            highlightsByBookId: {
+              ...state.highlightsByBookId,
+              [bookId]: current.map((h) => (h.id === highlightId ? { ...h, note } : h)),
             },
           };
         }),
