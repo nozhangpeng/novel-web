@@ -1,8 +1,43 @@
 import { get, set, del } from 'idb-keyval';
 import { Book, Chapter } from '../mock/data';
 
+const isGarbage = (text: string): boolean => {
+  const garbagePatterns = [
+    /[\uFFFD]/g,
+    /[\x80-\xFF]/g,
+  ];
+  let garbageCount = 0;
+  for (const pattern of garbagePatterns) {
+    const matches = text.match(pattern);
+    if (matches) {
+      garbageCount += matches.length;
+    }
+  }
+  return garbageCount / text.length > 0.1;
+};
+
+const decodeFile = async (file: File): Promise<string> => {
+  const arrayBuffer = await file.arrayBuffer();
+  
+  const utf8Decoder = new TextDecoder('utf-8');
+  const utf8Text = utf8Decoder.decode(arrayBuffer);
+  
+  if (!isGarbage(utf8Text)) {
+    return utf8Text;
+  }
+  
+  const gbkDecoder = new TextDecoder('gb18030');
+  const gbkText = gbkDecoder.decode(arrayBuffer);
+  
+  if (!isGarbage(gbkText)) {
+    return gbkText;
+  }
+  
+  return utf8Text;
+};
+
 export const importLocalNovel = async (file: File): Promise<{ book: Book, chapters: Chapter[] }> => {
-  const text = await file.text();
+  const text = await decodeFile(file);
   const bookId = `local_${Date.now()}`;
   const title = file.name.replace(/\.txt$/i, '');
   
